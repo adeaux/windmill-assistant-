@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect your Windmill Air Purifier",
+        "description": "Enter the device Auth Token. Log in at dashboard.windmillair.com, open the Devices tab, select your purifier and copy its Auth Token.",
+        "data": {
+          "token": "Auth Token"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Windmill Air Purifier",
+        "description": "The saved token was rejected. Enter a fresh Auth Token from dashboard.windmillair.com.",
+        "data": {
+          "token": "Auth Token"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The token was rejected by the Windmill cloud.",
+      "cannot_connect": "Could not reach the Windmill cloud."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Pin mapping",
+        "description": "Map Blynk datastreams (pins) to functions. Leave a field empty to disable that entity. Unmapped pins are exposed as diagnostic sensors — watch them while pressing buttons in the Windmill app to identify each function.\n\nCurrent values: {snapshot}",
+        "data": {
+          "power_pin": "Power pin",
+          "fan_speed_pin": "Fan speed pin",
+          "speed_count": "Number of fan speeds",
+          "auto_pin": "Auto mode pin (optional)",
+          "sleep_pin": "Sleep mode pin (optional)",
+          "aqi_pin": "AQI sensor pin (optional)",
+          "pm25_pin": "PM2.5 sensor pin (optional)",
+          "child_lock_pin": "Child lock pin (optional)",
+          "display_light_pin": "Display light pin (optional)",
+          "update_interval": "Polling interval (seconds)"
+        }
+      }
+    }
+  }
+}
