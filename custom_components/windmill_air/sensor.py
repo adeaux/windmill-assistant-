@@ -116,8 +116,11 @@ class WindmillValueSensor(WindmillEntity, SensorEntity):
         self._attr_native_unit_of_measurement = unit
 
     @property
-    def native_value(self) -> float | None:
-        return as_float(self.coordinator.pin_value(self._pin))
+    def native_value(self) -> float | int | None:
+        value = as_float(self.coordinator.pin_value(self._pin))
+        if value is not None and value.is_integer():
+            return int(value)
+        return value
 
 
 class WindmillPinSensor(WindmillEntity, SensorEntity):

@@ -102,6 +102,16 @@ sensor:
 The custom integration is nicer (single poll for all values, real fan entity,
 config UI), but the YAML route is a fine fallback.
 
+## Development
+
+The test suite spins up the integration against a mocked Windmill cloud
+(config flow, entity creation, fan commands, offline handling):
+
+```bash
+pip install pytest-homeassistant-custom-component
+pytest
+```
+
 ## Credits
 
 - API pattern reverse-engineered by the community for the Windmill AC:
