@@ -1,116 +1,124 @@
 # Windmill Air Purifier for Home Assistant
 
-A custom [Home Assistant](https://www.home-assistant.io/) integration that controls a
+[![Validate](https://github.com/adeaux/windmill-assistant-/actions/workflows/validate.yml/badge.svg)](https://github.com/adeaux/windmill-assistant-/actions/workflows/validate.yml)
+[![hacs](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
+
+A custom [Home Assistant](https://www.home-assistant.io/) integration that controls the
 [Windmill Air Purifier](https://windmillair.com/products/the-windmill-air-purifier)
-through Windmill's cloud (a white-labeled [Blynk](https://blynk.io) server at
-`dashboard.windmillair.com`).
+through Windmill's cloud — a white-labeled [Blynk](https://blynk.io) server at
+`dashboard.windmillair.com`.
 
-It gives you:
+There's a community integration for the Windmill **AC**, but nothing for the
+**purifier** — this fills that gap.
 
-- A **fan entity** — power, 5 fan speeds, and optional Auto / Sleep presets
-- An **AQI sensor** (plus optional PM2.5)
-- Optional **switches** for child lock and display light
-- **Diagnostic sensors for every unmapped datastream**, used to discover the pin
-  mapping of your unit (see below)
+> ⚠️ **Unofficial.** Not associated with, maintained, supported, or endorsed by
+> Windmill. Their cloud can change and break this at any time.
 
-> ⚠️ Unofficial. Not associated with, maintained, supported, or endorsed by Windmill.
-> Their cloud may change and break this at any time.
+## Features
 
-## How it works
+- **Fan** — power, 4 fan speeds, and presets: **Eco**, **Sleep: Whisper**,
+  **Sleep: White noise**
+- **Air quality** — numeric AQI (0–500) sensor and a Good/Moderate/… category sensor
+- **Switches** — child lock, display auto-dim, beep (audible feedback)
+- **Diagnostic sensors** for every unmapped datastream, to help map other units
+- UI config flow (just paste your device Auth Token) with reauth support
+- All pins remappable via the options flow, for units that differ
 
-Every Windmill device is a Blynk device: its state lives in numbered virtual
-datastreams ("pins" — `V0`, `V1`, ...), and Windmill's dashboard exposes Blynk's
-token-authenticated device HTTPS API:
+## Supported devices
 
-```
-GET https://dashboard.windmillair.com/external/api/getAll?token=TOKEN
-GET https://dashboard.windmillair.com/external/api/get?token=TOKEN&v0
-GET https://dashboard.windmillair.com/external/api/update?token=TOKEN&v0=1
-GET https://dashboard.windmillair.com/external/api/isHardwareConnected?token=TOKEN
-```
-
-The community mapped the pins for the Windmill **AC** (V0 power, V1 current temp,
-V2 target temp, V3 mode, V4 fan), but the **purifier's** pin map isn't published
-anywhere — so this integration makes the mapping configurable and helps you
-discover it in a few minutes.
+Developed and confirmed against the Windmill Air Purifier. Other Windmill
+purifier models likely work but may use a different pin layout — everything is
+remappable, and unmapped pins show as diagnostic sensors to help you adjust.
 
 ## Installation
 
-### HACS (recommended)
+### HACS (custom repository)
 
-1. HACS → three-dot menu → **Custom repositories** → add this repository's URL
-   with category **Integration**.
-2. Install **Windmill Air Purifier**, then restart Home Assistant.
+1. HACS → three-dot menu → **Custom repositories** → add
+   `https://github.com/adeaux/windmill-assistant-` with category **Integration**.
+2. Install **Windmill Air Purifier**, then **restart Home Assistant**.
 
 ### Manual
 
-Copy `custom_components/windmill_air/` into your Home Assistant `config/custom_components/`
+Copy `custom_components/windmill_air/` into your HA `config/custom_components/`
 folder and restart.
 
 ## Setup
 
 1. Get your device **Auth Token**: log in at
    [dashboard.windmillair.com](https://dashboard.windmillair.com) with your
-   Windmill app account, open the **Devices** tab, select your purifier, and copy
-   the Auth Token.
-2. In Home Assistant: **Settings → Devices & Services → Add Integration →
-   Windmill Air Purifier**, paste the token.
+   Windmill app account → **Devices** tab → select your purifier → copy the Auth Token.
+2. **Settings → Devices & Services → Add Integration → Windmill Air Purifier**,
+   paste the token.
 
-## Mapping the pins (one-time, ~5 minutes)
+Defaults already match a standard Windmill Air Purifier, so no manual mapping is
+usually needed.
 
-The integration starts with a best-guess mapping (`V0` power, `V1` fan speed,
-`V2` AQI). Verify it against your unit:
+## Entities
 
-1. After setup, open the device page. Every datastream the cloud reports that
-   isn't already mapped appears as a diagnostic **"Pin Vx"** sensor.
-2. Change one setting at a time in the Windmill app (power, fan speed, auto mode,
-   sleep, child lock, display light) and watch which pin sensor changes and to
-   what value.
-3. Open the integration's **Configure** dialog and assign each pin. The dialog
-   also shows a live snapshot of all current pin values. Leave a field empty to
-   disable that entity.
+| Entity | Source | Notes |
+|--------|--------|-------|
+| `fan.windmill…` | V0 power, V3 mode | 4-speed slider + Eco / Sleep presets |
+| `sensor.…air_quality_index` | V1 | numeric AQI 0–500 |
+| `sensor.…air_quality` | V16 | category: Good / Moderate / … |
+| `switch.…child_lock` | V11 | |
+| `switch.…display_auto_dim` | V5 | LED auto-fade after interaction |
+| `switch.…beep` | V6 | audible feedback |
+| `sensor.…pin_v#` | unmapped pins | diagnostic, for discovery |
 
-Alternatively, run the standalone discovery script from any machine (no Home
-Assistant needed):
+## How it works
+
+Windmill devices are Blynk devices: state lives in numbered virtual datastreams
+("pins"), read/written over Blynk's token-authenticated device HTTPS API. The
+integration polls `getAll` and writes with `update`.
+
+Two Blynk quirks are handled automatically:
+
+- **`getAll` can omit datastreams** that have no web-dashboard widget. Any pin you
+  map that's missing from the bulk response is fetched individually via `get?vN`.
+- **`get?vN` returns human labels** for enum pins (e.g. the AQI category), so the
+  category pin is always fetched individually to show "Good"/"Moderate" rather
+  than a raw code.
+
+## Configuration & remapping
+
+Open the integration's **Configure** dialog to remap any pin (blank disables that
+entity) or change the polling interval. The dialog shows a live snapshot of all
+current pin values. Confirmed default mapping:
+
+| Pin | Function |
+|-----|----------|
+| V0 | Power |
+| V1 | AQI (numeric) |
+| V3 | Mode: 1–4 speeds, 5 = Eco, 6 = Sleep |
+| V4 | Sleep sub-mode: 1 = Whisper, 2 = White noise |
+| V5 | Display auto-dim |
+| V6 | Beep |
+| V11 | Child lock |
+| V16 | AQI category |
+
+### Discovering pins on a different unit
+
+`scripts/discover_pins.py` (standard library only):
 
 ```bash
-python3 scripts/discover_pins.py YOUR_AUTH_TOKEN --watch   # watch pins change live
-python3 scripts/discover_pins.py YOUR_AUTH_TOKEN --set v1=3  # test a write
+python3 scripts/discover_pins.py YOUR_TOKEN --watch    # highlight pins that change live
+python3 scripts/discover_pins.py YOUR_TOKEN --scan     # probe v0..v120, flag getAll-hidden pins
+python3 scripts/discover_pins.py YOUR_TOKEN --set v3=5  # test a write (Eco)
 ```
 
-Once you've confirmed your purifier's mapping, please open an issue or PR with it
-so it can become the default!
-
-## No-custom-component alternative
-
-If you'd rather not install a custom integration, the same API works with plain
-YAML — for example:
-
-```yaml
-rest_command:
-  purifier_power_on:
-    url: "https://dashboard.windmillair.com/external/api/update?token=YOUR_TOKEN&v0=1"
-  purifier_power_off:
-    url: "https://dashboard.windmillair.com/external/api/update?token=YOUR_TOKEN&v0=0"
-
-sensor:
-  - platform: rest
-    name: Purifier AQI
-    resource: "https://dashboard.windmillair.com/external/api/get?token=YOUR_TOKEN&v2"
-```
-
-The custom integration is nicer (single poll for all values, real fan entity,
-config UI), but the YAML route is a fine fallback.
+Change one setting at a time in the Windmill app and note which pin flips.
 
 ## Development
-
-The test suite spins up the integration against a mocked Windmill cloud
-(config flow, entity creation, fan commands, offline handling):
 
 ```bash
 pip install pytest-homeassistant-custom-component
 pytest
 ```
+
+The suite runs the integration end-to-end against a mocked cloud (config flow,
+entities, fan/preset/switch writes, the getAll-omission fallback, the category
+label override, offline handling).
 
 ## Credits
 
@@ -118,3 +126,7 @@ pytest
   [bzellman/WindmillAC](https://github.com/bzellman/WindmillAC) and
   [johnanthonyeletto/homebridge-windmill-ac](https://github.com/johnanthonyeletto/homebridge-windmill-ac)
 - [Blynk device HTTPS API docs](https://docs.blynk.io/en/blynk.cloud/device-https-api)
+
+## License
+
+[MIT](LICENSE)
