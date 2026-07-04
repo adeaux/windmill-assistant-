@@ -20,16 +20,20 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     CONF_AQI_PIN,
-    CONF_AUTO_PIN,
+    CONF_BEEP_PIN,
     CONF_CHILD_LOCK_PIN,
-    CONF_DISPLAY_LIGHT_PIN,
-    CONF_FAN_SPEED_PIN,
+    CONF_LED_FADE_PIN,
+    CONF_MODE_PIN,
     CONF_PM25_PIN,
     CONF_POWER_PIN,
-    CONF_SLEEP_PIN,
+    CONF_SLEEP_SUBMODE_PIN,
     DEFAULT_AQI_PIN,
-    DEFAULT_FAN_SPEED_PIN,
+    DEFAULT_BEEP_PIN,
+    DEFAULT_CHILD_LOCK_PIN,
+    DEFAULT_LED_FADE_PIN,
+    DEFAULT_MODE_PIN,
     DEFAULT_POWER_PIN,
+    DEFAULT_SLEEP_SUBMODE_PIN,
     DOMAIN,
 )
 from .coordinator import WindmillCoordinator
@@ -41,13 +45,13 @@ def _mapped_pins(entry: ConfigEntry) -> set[str]:
     options = entry.options
     pins = {
         options.get(CONF_POWER_PIN, DEFAULT_POWER_PIN),
-        options.get(CONF_FAN_SPEED_PIN, DEFAULT_FAN_SPEED_PIN),
+        options.get(CONF_MODE_PIN, DEFAULT_MODE_PIN),
+        options.get(CONF_SLEEP_SUBMODE_PIN, DEFAULT_SLEEP_SUBMODE_PIN),
         options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN),
         options.get(CONF_PM25_PIN, ""),
-        options.get(CONF_AUTO_PIN, ""),
-        options.get(CONF_SLEEP_PIN, ""),
-        options.get(CONF_CHILD_LOCK_PIN, ""),
-        options.get(CONF_DISPLAY_LIGHT_PIN, ""),
+        options.get(CONF_CHILD_LOCK_PIN, DEFAULT_CHILD_LOCK_PIN),
+        options.get(CONF_LED_FADE_PIN, DEFAULT_LED_FADE_PIN),
+        options.get(CONF_BEEP_PIN, DEFAULT_BEEP_PIN),
     }
     return {p.lower() for p in pins if p}
 

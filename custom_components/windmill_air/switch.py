@@ -1,4 +1,4 @@
-"""Optional switches (child lock, display light) for the Windmill Air Purifier."""
+"""Toggle switches (child lock, LED auto-fade, beep) for the Windmill purifier."""
 
 from __future__ import annotations
 
@@ -10,10 +10,31 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_CHILD_LOCK_PIN, CONF_DISPLAY_LIGHT_PIN, DOMAIN
+from .const import (
+    CONF_BEEP_PIN,
+    CONF_CHILD_LOCK_PIN,
+    CONF_LED_FADE_PIN,
+    DEFAULT_BEEP_PIN,
+    DEFAULT_CHILD_LOCK_PIN,
+    DEFAULT_LED_FADE_PIN,
+    DOMAIN,
+)
 from .coordinator import WindmillCoordinator
 from .entity import WindmillEntity
 from .util import as_bool
+
+# (config key, default pin, unique-id suffix, display name, icon)
+SWITCHES = (
+    (CONF_CHILD_LOCK_PIN, DEFAULT_CHILD_LOCK_PIN, "child_lock", "Child lock", "mdi:lock"),
+    (
+        CONF_LED_FADE_PIN,
+        DEFAULT_LED_FADE_PIN,
+        "led_fade",
+        "Display auto-dim",
+        "mdi:brightness-auto",
+    ),
+    (CONF_BEEP_PIN, DEFAULT_BEEP_PIN, "beep", "Beep", "mdi:volume-high"),
+)
 
 
 async def async_setup_entry(
@@ -23,16 +44,10 @@ async def async_setup_entry(
 ) -> None:
     coordinator: WindmillCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities = []
-    if pin := entry.options.get(CONF_CHILD_LOCK_PIN, ""):
-        entities.append(
-            WindmillSwitch(coordinator, pin, "child_lock", "Child lock", "mdi:lock")
-        )
-    if pin := entry.options.get(CONF_DISPLAY_LIGHT_PIN, ""):
-        entities.append(
-            WindmillSwitch(
-                coordinator, pin, "display_light", "Display light", "mdi:lightbulb-on"
-            )
-        )
+    for conf_key, default_pin, suffix, name, icon in SWITCHES:
+        pin = entry.options.get(conf_key, default_pin)
+        if pin:
+            entities.append(WindmillSwitch(coordinator, pin, suffix, name, icon))
     async_add_entities(entities)
 
 

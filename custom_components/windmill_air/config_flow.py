@@ -19,19 +19,23 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .api import WindmillAirApi, WindmillApiError, WindmillAuthError
 from .const import (
     CONF_AQI_PIN,
-    CONF_AUTO_PIN,
+    CONF_BEEP_PIN,
     CONF_CHILD_LOCK_PIN,
-    CONF_DISPLAY_LIGHT_PIN,
-    CONF_FAN_SPEED_PIN,
+    CONF_LED_FADE_PIN,
+    CONF_MODE_PIN,
     CONF_PM25_PIN,
     CONF_POWER_PIN,
-    CONF_SLEEP_PIN,
+    CONF_SLEEP_SUBMODE_PIN,
     CONF_SPEED_COUNT,
     CONF_TOKEN,
     CONF_UPDATE_INTERVAL,
     DEFAULT_AQI_PIN,
-    DEFAULT_FAN_SPEED_PIN,
+    DEFAULT_BEEP_PIN,
+    DEFAULT_CHILD_LOCK_PIN,
+    DEFAULT_LED_FADE_PIN,
+    DEFAULT_MODE_PIN,
     DEFAULT_POWER_PIN,
+    DEFAULT_SLEEP_SUBMODE_PIN,
     DEFAULT_SPEED_COUNT,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
@@ -141,19 +145,19 @@ class WindmillOptionsFlow(OptionsFlow):
                     CONF_POWER_PIN,
                     default=options.get(CONF_POWER_PIN, DEFAULT_POWER_PIN),
                 ): str,
-                vol.Optional(
-                    CONF_FAN_SPEED_PIN,
-                    default=options.get(CONF_FAN_SPEED_PIN, DEFAULT_FAN_SPEED_PIN),
+                vol.Required(
+                    CONF_MODE_PIN,
+                    default=options.get(CONF_MODE_PIN, DEFAULT_MODE_PIN),
                 ): str,
                 vol.Required(
                     CONF_SPEED_COUNT,
                     default=options.get(CONF_SPEED_COUNT, DEFAULT_SPEED_COUNT),
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
                 vol.Optional(
-                    CONF_AUTO_PIN, default=options.get(CONF_AUTO_PIN, "")
-                ): str,
-                vol.Optional(
-                    CONF_SLEEP_PIN, default=options.get(CONF_SLEEP_PIN, "")
+                    CONF_SLEEP_SUBMODE_PIN,
+                    default=options.get(
+                        CONF_SLEEP_SUBMODE_PIN, DEFAULT_SLEEP_SUBMODE_PIN
+                    ),
                 ): str,
                 vol.Optional(
                     CONF_AQI_PIN, default=options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN)
@@ -163,11 +167,15 @@ class WindmillOptionsFlow(OptionsFlow):
                 ): str,
                 vol.Optional(
                     CONF_CHILD_LOCK_PIN,
-                    default=options.get(CONF_CHILD_LOCK_PIN, ""),
+                    default=options.get(CONF_CHILD_LOCK_PIN, DEFAULT_CHILD_LOCK_PIN),
                 ): str,
                 vol.Optional(
-                    CONF_DISPLAY_LIGHT_PIN,
-                    default=options.get(CONF_DISPLAY_LIGHT_PIN, ""),
+                    CONF_LED_FADE_PIN,
+                    default=options.get(CONF_LED_FADE_PIN, DEFAULT_LED_FADE_PIN),
+                ): str,
+                vol.Optional(
+                    CONF_BEEP_PIN,
+                    default=options.get(CONF_BEEP_PIN, DEFAULT_BEEP_PIN),
                 ): str,
                 vol.Required(
                     CONF_UPDATE_INTERVAL,
