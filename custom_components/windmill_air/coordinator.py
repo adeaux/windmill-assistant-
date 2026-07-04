@@ -41,10 +41,30 @@ class WindmillCoordinator(DataUpdateCoordinator[WindmillData]):
         )
         self.api = api
 
+    def _configured_pins(self) -> list[str]:
+        """Pin names explicitly mapped in the options (keys ending in _pin)."""
+        pins = []
+        for key, value in self.config_entry.options.items():
+            if key.endswith("_pin") and isinstance(value, str) and value.strip():
+                pins.append(value.strip().lower())
+        return pins
+
     async def _async_update_data(self) -> WindmillData:
         try:
             online = await self.api.is_connected()
             pins = await self.api.get_all()
+            # Blynk's getAll can omit datastreams that have no web-dashboard
+            # widget (e.g. AQI on some units). Fetch any explicitly mapped pin
+            # that's missing from the bulk response individually.
+            for pin in self._configured_pins():
+                if pin in pins:
+                    continue
+                try:
+                    value = await self.api.get_pin(pin)
+                except WindmillApiError:
+                    continue
+                if value not in ("", None):
+                    pins[pin] = value
         except WindmillAuthError as err:
             raise ConfigEntryAuthFailed(str(err)) from err
         except WindmillApiError as err:

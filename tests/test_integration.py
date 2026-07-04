@@ -167,13 +167,28 @@ async def test_switch_toggle_writes_pin(hass: HomeAssistant, aioclient_mock) -> 
     assert hass.states.get("switch.windmill_child_lock").state == "on"
 
 
-async def test_custom_aqi_pin_creates_sensor(
+async def test_aqi_pin_hidden_from_getall_is_fetched_individually(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
-    await _setup_entry(hass, aioclient_mock, options={"aqi_pin": "v9"})
-    mock_cloud(aioclient_mock, pins={**PINS, "v9": 12})
-    # v9 is now the AQI sensor rather than a diagnostic pin
-    assert hass.states.get("sensor.windmill_air_quality_index") is not None
+    # v9 is NOT in the getAll blob, but the device returns it via get?v9 —
+    # the coordinator must fall back to an individual fetch for mapped pins.
+    aioclient_mock.get(f"{BASE}/isHardwareConnected", text="true")
+    aioclient_mock.get(f"{BASE}/getAll", json=PINS)  # no v9
+    aioclient_mock.get(f"{BASE}/get", text="[12]")  # individual v9 fetch
+    aioclient_mock.get(f"{BASE}/update", text="")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={"token": TOKEN},
+        options={"aqi_pin": "v9"},
+        title="Windmill",
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    aqi = hass.states.get("sensor.windmill_air_quality_index")
+    assert aqi is not None
+    assert aqi.state == "12"
     assert hass.states.get("sensor.windmill_pin_v9") is None
 
 
