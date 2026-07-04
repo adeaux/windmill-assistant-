@@ -11,10 +11,11 @@ from custom_components.windmill_air.const import DOMAIN
 BASE = "https://dashboard.windmillair.com/external/api"
 TOKEN = "test-token-123"
 
-# v0 power, v3 mode (speed 2 of 4), v4 sleep sub-mode, v5 LED fade,
-# v6 beep, v11 child lock, plus a couple of unmapped pins.
+# v0 power, v1 numeric AQI, v3 mode (speed 2 of 4), v4 sleep sub-mode,
+# v5 LED fade, v6 beep, v11 child lock, plus an unmapped pin (v7).
 PINS = {
     "v0": 1,
+    "v1": 7,
     "v3": 2,
     "v4": 1,
     "v5": 1,
@@ -101,11 +102,12 @@ async def test_entities_created(hass: HomeAssistant, aioclient_mock) -> None:
     assert hass.states.get("switch.windmill_display_auto_dim").state == "on"  # v5 == 1
     assert hass.states.get("switch.windmill_beep").state == "off"  # v6 == 0
 
-    # AQI is unmapped by default -> no AQI sensor, and every unmapped pin is
-    # a diagnostic sensor (v7 here; the mapped ones are not).
-    assert hass.states.get("sensor.windmill_air_quality_index") is None
+    # AQI defaults to v1; other unmapped pins become diagnostic sensors
+    # (v7 here), while mapped pins (v1, v3, ...) do not.
+    assert hass.states.get("sensor.windmill_air_quality_index").state == "7"  # v1
     assert hass.states.get("sensor.windmill_pin_v7").state == "71"
     assert hass.states.get("sensor.windmill_pin_v3") is None
+    assert hass.states.get("sensor.windmill_pin_v1") is None
 
 
 async def test_speed_slider_writes_mode_pin(
