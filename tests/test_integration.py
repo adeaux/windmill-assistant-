@@ -11,7 +11,17 @@ from custom_components.windmill_air.const import DOMAIN
 BASE = "https://dashboard.windmillair.com/external/api"
 TOKEN = "test-token-123"
 
-PINS = {"v0": 1, "v1": 3, "v2": 42, "v5": 0, "v7": "some text"}
+# v0 power, v3 mode (speed 2 of 4), v4 sleep sub-mode, v5 LED fade,
+# v6 beep, v11 child lock, plus a couple of unmapped pins.
+PINS = {
+    "v0": 1,
+    "v3": 2,
+    "v4": 1,
+    "v5": 1,
+    "v6": 0,
+    "v7": 71,
+    "v11": 0,
+}
 
 
 @pytest.fixture(autouse=True)
@@ -64,63 +74,107 @@ async def _setup_entry(hass, aioclient_mock, options=None) -> MockConfigEntry:
     return entry
 
 
+def _last_updates(aioclient_mock):
+    return [
+        str(c[1].query_string)
+        for c in aioclient_mock.mock_calls
+        if "update" in str(c[1])
+    ]
+
+
 async def test_entities_created(hass: HomeAssistant, aioclient_mock) -> None:
     await _setup_entry(hass, aioclient_mock)
 
     fan = hass.states.get("fan.windmill")
     assert fan is not None
     assert fan.state == "on"  # v0 == 1
-    assert fan.attributes["percentage"] == 60  # v1 == 3 of 5 speeds
+    assert fan.attributes["percentage"] == 50  # v3 == 2 of 4 speeds
+    assert fan.attributes["preset_modes"] == [
+        "Eco",
+        "Sleep: Whisper",
+        "Sleep: White noise",
+    ]
+    assert fan.attributes["preset_mode"] is None  # numbered speed, not a preset
 
-    aqi = hass.states.get("sensor.windmill_air_quality_index")
-    assert aqi is not None
-    assert aqi.state == "42"  # v2
+    # Switches from the default pin mapping
+    assert hass.states.get("switch.windmill_child_lock").state == "off"  # v11 == 0
+    assert hass.states.get("switch.windmill_display_auto_dim").state == "on"  # v5 == 1
+    assert hass.states.get("switch.windmill_beep").state == "off"  # v6 == 0
 
-    # Unmapped pins (v5, v7) become diagnostic sensors
-    assert hass.states.get("sensor.windmill_pin_v5").state == "0"
-    assert hass.states.get("sensor.windmill_pin_v7").state == "some text"
-    # Mapped pins do not
-    assert hass.states.get("sensor.windmill_pin_v0") is None
+    # AQI is unmapped by default -> no AQI sensor, and every unmapped pin is
+    # a diagnostic sensor (v7 here; the mapped ones are not).
+    assert hass.states.get("sensor.windmill_air_quality_index") is None
+    assert hass.states.get("sensor.windmill_pin_v7").state == "71"
+    assert hass.states.get("sensor.windmill_pin_v3") is None
 
 
-async def test_fan_commands(hass: HomeAssistant, aioclient_mock) -> None:
+async def test_speed_slider_writes_mode_pin(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
     await _setup_entry(hass, aioclient_mock)
-
-    # The post-write refresh polls getAll again; serve the post-write state.
     aioclient_mock.clear_requests()
-    mock_cloud(aioclient_mock, pins={**PINS, "v0": 0})
-    await hass.services.async_call(
-        "fan", "turn_off", {"entity_id": "fan.windmill"}, blocking=True
-    )
-    update_calls = [c for c in aioclient_mock.mock_calls if "update" in str(c[1])]
-    assert any("v0=0" in str(c[1].query_string) for c in update_calls)
-    assert hass.states.get("fan.windmill").state == "off"
-
-    aioclient_mock.clear_requests()
-    mock_cloud(aioclient_mock, pins={**PINS, "v1": 5})
+    mock_cloud(aioclient_mock, pins={**PINS, "v3": 4})
     await hass.services.async_call(
         "fan",
         "set_percentage",
         {"entity_id": "fan.windmill", "percentage": 100},
         blocking=True,
     )
-    update_calls = [c for c in aioclient_mock.mock_calls if "update" in str(c[1])]
-    assert any("v1=5" in str(c[1].query_string) for c in update_calls)
+    assert any("v3=4" in q for q in _last_updates(aioclient_mock))
     assert hass.states.get("fan.windmill").attributes["percentage"] == 100
 
 
-async def test_switches_and_presets_from_options(
+async def test_eco_and_sleep_presets(hass: HomeAssistant, aioclient_mock) -> None:
+    await _setup_entry(hass, aioclient_mock)
+
+    # Eco -> mode pin 5
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins={**PINS, "v3": 5})
+    await hass.services.async_call(
+        "fan",
+        "set_preset_mode",
+        {"entity_id": "fan.windmill", "preset_mode": "Eco"},
+        blocking=True,
+    )
+    assert any("v3=5" in q for q in _last_updates(aioclient_mock))
+    assert hass.states.get("fan.windmill").attributes["preset_mode"] == "Eco"
+
+    # Sleep: White noise -> mode pin 6 and sub-mode pin 2
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins={**PINS, "v3": 6, "v4": 2})
+    await hass.services.async_call(
+        "fan",
+        "set_preset_mode",
+        {"entity_id": "fan.windmill", "preset_mode": "Sleep: White noise"},
+        blocking=True,
+    )
+    updates = _last_updates(aioclient_mock)
+    assert any("v3=6" in q for q in updates)
+    assert any("v4=2" in q for q in updates)
+    fan = hass.states.get("fan.windmill")
+    assert fan.attributes["preset_mode"] == "Sleep: White noise"
+    assert fan.attributes["percentage"] is None  # a preset, not a speed
+
+
+async def test_switch_toggle_writes_pin(hass: HomeAssistant, aioclient_mock) -> None:
+    await _setup_entry(hass, aioclient_mock)
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins={**PINS, "v11": 1})
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": "switch.windmill_child_lock"}, blocking=True
+    )
+    assert any("v11=1" in q for q in _last_updates(aioclient_mock))
+    assert hass.states.get("switch.windmill_child_lock").state == "on"
+
+
+async def test_custom_aqi_pin_creates_sensor(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
-    await _setup_entry(
-        hass,
-        aioclient_mock,
-        options={"child_lock_pin": "v5", "auto_pin": "v6", "display_light_pin": ""},
-    )
-    assert hass.states.get("switch.windmill_child_lock").state == "off"  # v5 == 0
-    assert hass.states.get("switch.windmill_display_light") is None
-    fan = hass.states.get("fan.windmill")
-    assert fan.attributes["preset_modes"] == ["Auto"]
+    await _setup_entry(hass, aioclient_mock, options={"aqi_pin": "v9"})
+    mock_cloud(aioclient_mock, pins={**PINS, "v9": 12})
+    # v9 is now the AQI sensor rather than a diagnostic pin
+    assert hass.states.get("sensor.windmill_air_quality_index") is not None
+    assert hass.states.get("sensor.windmill_pin_v9") is None
 
 
 async def test_device_offline_marks_unavailable(
