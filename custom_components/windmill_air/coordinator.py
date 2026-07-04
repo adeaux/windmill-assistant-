@@ -12,7 +12,14 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import WindmillAirApi, WindmillApiError, WindmillAuthError
-from .const import CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL, DOMAIN, LOGGER
+from .const import (
+    CONF_AQI_CATEGORY_PIN,
+    CONF_UPDATE_INTERVAL,
+    DEFAULT_AQI_CATEGORY_PIN,
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+    LOGGER,
+)
 
 
 @dataclass
@@ -49,6 +56,13 @@ class WindmillCoordinator(DataUpdateCoordinator[WindmillData]):
                 pins.append(value.strip().lower())
         return pins
 
+    def _label_pins(self) -> list[str]:
+        """Pins whose text label (via get) is preferred over the getAll number."""
+        pin = self.config_entry.options.get(
+            CONF_AQI_CATEGORY_PIN, DEFAULT_AQI_CATEGORY_PIN
+        )
+        return [pin.strip().lower()] if pin else []
+
     async def _async_update_data(self) -> WindmillData:
         try:
             online = await self.api.is_connected()
@@ -59,6 +73,15 @@ class WindmillCoordinator(DataUpdateCoordinator[WindmillData]):
             for pin in self._configured_pins():
                 if pin in pins:
                     continue
+                try:
+                    value = await self.api.get_pin(pin)
+                except WindmillApiError:
+                    continue
+                if value not in ("", None):
+                    pins[pin] = value
+            # Some pins carry an enum label (Good/Moderate/…) that getAll
+            # returns as a bare code; fetch those individually for the label.
+            for pin in self._label_pins():
                 try:
                     value = await self.api.get_pin(pin)
                 except WindmillApiError:

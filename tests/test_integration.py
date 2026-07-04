@@ -12,7 +12,8 @@ BASE = "https://dashboard.windmillair.com/external/api"
 TOKEN = "test-token-123"
 
 # v0 power, v1 numeric AQI, v3 mode (speed 2 of 4), v4 sleep sub-mode,
-# v5 LED fade, v6 beep, v11 child lock, plus an unmapped pin (v7).
+# v5 LED fade, v6 beep, v11 child lock, v16 AQI category (getAll returns the
+# numeric code; the label comes from an individual get), plus unmapped v7.
 PINS = {
     "v0": 1,
     "v1": 7,
@@ -22,6 +23,7 @@ PINS = {
     "v6": 0,
     "v7": 71,
     "v11": 0,
+    "v16": 1,
 }
 
 
@@ -31,9 +33,12 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     return
 
 
-def mock_cloud(aioclient_mock, pins=PINS, online=True):
+def mock_cloud(aioclient_mock, pins=PINS, online=True, label="Good"):
     aioclient_mock.get(f"{BASE}/isHardwareConnected", text="true" if online else "false")
     aioclient_mock.get(f"{BASE}/getAll", json=pins)
+    # Individual get returns enum labels (e.g. the AQI category) and is the
+    # fallback for pins missing from getAll.
+    aioclient_mock.get(f"{BASE}/get", text=label)
     aioclient_mock.get(f"{BASE}/update", text="")
 
 
@@ -103,11 +108,14 @@ async def test_entities_created(hass: HomeAssistant, aioclient_mock) -> None:
     assert hass.states.get("switch.windmill_beep").state == "off"  # v6 == 0
 
     # AQI defaults to v1; other unmapped pins become diagnostic sensors
-    # (v7 here), while mapped pins (v1, v3, ...) do not.
+    # (v7 here), while mapped pins (v1, v3, v16, ...) do not.
     assert hass.states.get("sensor.windmill_air_quality_index").state == "7"  # v1
+    # AQI category (v16) shows the label from the individual get, not the code
+    assert hass.states.get("sensor.windmill_air_quality").state == "Good"
     assert hass.states.get("sensor.windmill_pin_v7").state == "71"
     assert hass.states.get("sensor.windmill_pin_v3") is None
     assert hass.states.get("sensor.windmill_pin_v1") is None
+    assert hass.states.get("sensor.windmill_pin_v16") is None
 
 
 async def test_speed_slider_writes_mode_pin(

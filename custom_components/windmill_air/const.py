@@ -23,6 +23,9 @@ CONF_SPEED_COUNT = "speed_count"
 # Sub-mode pin, only meaningful while the mode pin is set to Sleep.
 CONF_SLEEP_SUBMODE_PIN = "sleep_submode_pin"
 CONF_AQI_PIN = "aqi_pin"
+# The category pin reports a text label (Good/Moderate/…) rather than a number,
+# so it is always fetched individually to get the label instead of the raw code.
+CONF_AQI_CATEGORY_PIN = "aqi_category_pin"
 CONF_PM25_PIN = "pm25_pin"
 CONF_CHILD_LOCK_PIN = "child_lock_pin"
 CONF_LED_FADE_PIN = "led_fade_pin"
@@ -35,6 +38,7 @@ DEFAULT_MODE_PIN = "v3"
 DEFAULT_SPEED_COUNT = 4
 DEFAULT_SLEEP_SUBMODE_PIN = "v4"
 DEFAULT_AQI_PIN = "v1"  # numeric 0-500 AQI (V16 holds the Good/Moderate label)
+DEFAULT_AQI_CATEGORY_PIN = "v16"  # text label: Good / Moderate / …
 DEFAULT_CHILD_LOCK_PIN = "v11"
 DEFAULT_LED_FADE_PIN = "v5"
 DEFAULT_BEEP_PIN = "v6"

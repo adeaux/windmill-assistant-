@@ -19,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
+    CONF_AQI_CATEGORY_PIN,
     CONF_AQI_PIN,
     CONF_BEEP_PIN,
     CONF_CHILD_LOCK_PIN,
@@ -27,6 +28,7 @@ from .const import (
     CONF_PM25_PIN,
     CONF_POWER_PIN,
     CONF_SLEEP_SUBMODE_PIN,
+    DEFAULT_AQI_CATEGORY_PIN,
     DEFAULT_AQI_PIN,
     DEFAULT_BEEP_PIN,
     DEFAULT_CHILD_LOCK_PIN,
@@ -48,6 +50,7 @@ def _mapped_pins(entry: ConfigEntry) -> set[str]:
         options.get(CONF_MODE_PIN, DEFAULT_MODE_PIN),
         options.get(CONF_SLEEP_SUBMODE_PIN, DEFAULT_SLEEP_SUBMODE_PIN),
         options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN),
+        options.get(CONF_AQI_CATEGORY_PIN, DEFAULT_AQI_CATEGORY_PIN),
         options.get(CONF_PM25_PIN, ""),
         options.get(CONF_CHILD_LOCK_PIN, DEFAULT_CHILD_LOCK_PIN),
         options.get(CONF_LED_FADE_PIN, DEFAULT_LED_FADE_PIN),
@@ -75,6 +78,10 @@ async def async_setup_entry(
                 device_class=SensorDeviceClass.AQI,
             )
         )
+    category_pin = entry.options.get(CONF_AQI_CATEGORY_PIN, DEFAULT_AQI_CATEGORY_PIN)
+    if category_pin:
+        entities.append(WindmillCategorySensor(coordinator, category_pin))
+
     pm25_pin = entry.options.get(CONF_PM25_PIN, "")
     if pm25_pin:
         entities.append(
@@ -125,6 +132,22 @@ class WindmillValueSensor(WindmillEntity, SensorEntity):
         if value is not None and value.is_integer():
             return int(value)
         return value
+
+
+class WindmillCategorySensor(WindmillEntity, SensorEntity):
+    """Air-quality category (Good / Moderate / …) reported as a text label."""
+
+    _attr_icon = "mdi:air-filter"
+
+    def __init__(self, coordinator: WindmillCoordinator, pin: str) -> None:
+        super().__init__(coordinator, "aqi_category")
+        self._pin = pin
+        self._attr_name = "Air quality"
+
+    @property
+    def native_value(self) -> str | None:
+        value = self.coordinator.pin_value(self._pin)
+        return None if value in (None, "") else str(value)
 
 
 class WindmillPinSensor(WindmillEntity, SensorEntity):

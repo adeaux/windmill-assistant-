@@ -18,6 +18,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import WindmillAirApi, WindmillApiError, WindmillAuthError
 from .const import (
+    CONF_AQI_CATEGORY_PIN,
     CONF_AQI_PIN,
     CONF_BEEP_PIN,
     CONF_CHILD_LOCK_PIN,
@@ -29,6 +30,7 @@ from .const import (
     CONF_SPEED_COUNT,
     CONF_TOKEN,
     CONF_UPDATE_INTERVAL,
+    DEFAULT_AQI_CATEGORY_PIN,
     DEFAULT_AQI_PIN,
     DEFAULT_BEEP_PIN,
     DEFAULT_CHILD_LOCK_PIN,
@@ -161,6 +163,12 @@ class WindmillOptionsFlow(OptionsFlow):
                 ): str,
                 vol.Optional(
                     CONF_AQI_PIN, default=options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN)
+                ): str,
+                vol.Optional(
+                    CONF_AQI_CATEGORY_PIN,
+                    default=options.get(
+                        CONF_AQI_CATEGORY_PIN, DEFAULT_AQI_CATEGORY_PIN
+                    ),
                 ): str,
                 vol.Optional(
                     CONF_PM25_PIN, default=options.get(CONF_PM25_PIN, "")
