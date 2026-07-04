@@ -48,6 +48,29 @@ def get_all(token: str) -> dict:
     return {k.lower(): v for k, v in data.items()}
 
 
+def get_one(token: str, pin: str) -> str | None:
+    """Fetch a single datastream; return None if it has no value."""
+    url = f"{BASE_URL}/get?{urllib.parse.urlencode({'token': token, pin: ''})}"
+    try:
+        with urllib.request.urlopen(url, timeout=15) as resp:
+            value = resp.read().decode().strip('[]" \n')
+            return value or None
+    except urllib.error.HTTPError:
+        return None  # 400 = no data stored for this pin
+    except urllib.error.URLError:
+        return None
+
+
+def scan(token: str, max_pin: int) -> dict:
+    """Probe v0..vN individually — finds pins that getAll omits."""
+    found = {}
+    for i in range(max_pin + 1):
+        value = get_one(token, f"v{i}")
+        if value is not None:
+            found[f"v{i}"] = value
+    return found
+
+
 def print_pins(pins: dict, changed: set[str] | None = None) -> None:
     for pin in sorted(pins):
         marker = " *" if changed and pin in changed else ""
@@ -59,6 +82,15 @@ def main() -> None:
     parser.add_argument("token", help="Device Auth Token from dashboard.windmillair.com")
     parser.add_argument("--watch", action="store_true", help="Poll every 3s and highlight changes")
     parser.add_argument("--set", metavar="PIN=VALUE", help="Write a value, e.g. --set v1=3")
+    parser.add_argument(
+        "--scan",
+        nargs="?",
+        type=int,
+        const=120,
+        metavar="MAX",
+        help="Probe v0..vMAX individually (default 120). Finds pins getAll hides "
+        "— pins marked [hidden] are returned by get but missing from getAll.",
+    )
     args = parser.parse_args()
 
     online = call("isHardwareConnected", args.token).strip().lower() == "true"
@@ -72,8 +104,24 @@ def main() -> None:
         print(f"Wrote {pin.upper()} = {value}")
 
     pins = get_all(args.token)
-    print(f"\nDatastreams ({len(pins)}):")
+    print(f"\nDatastreams via getAll ({len(pins)}):")
     print_pins(pins)
+
+    if args.scan is not None:
+        print(f"\nProbing v0..v{args.scan} individually…")
+        probed = scan(args.token, args.scan)
+        print(f"Pins with a value via get ({len(probed)}):")
+        for pin in sorted(probed, key=lambda p: int(p[1:])):
+            hidden = " [hidden: getAll missed this]" if pin not in pins else ""
+            print(f"  {pin.upper():>5} = {probed[pin]!r}{hidden}")
+        hidden_pins = [p for p in probed if p not in pins]
+        if hidden_pins:
+            print(
+                "\n>> "
+                + ", ".join(p.upper() for p in sorted(hidden_pins, key=lambda p: int(p[1:])))
+                + " are only reachable via get. If one of these tracks AQI, map it "
+                "in the integration — it now fetches mapped pins individually."
+            )
 
     if not args.watch:
         return
