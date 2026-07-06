@@ -20,6 +20,11 @@ from .api import WindmillAirApi, WindmillApiError, WindmillAuthError
 from .const import (
     CONF_AQI_CATEGORY_PIN,
     CONF_AQI_PIN,
+    CONF_AUTO_HYSTERESIS,
+    CONF_AUTO_PRESET_ENABLED,
+    CONF_AUTO_THRESHOLD_1,
+    CONF_AUTO_THRESHOLD_2,
+    CONF_AUTO_THRESHOLD_3,
     CONF_BEEP_PIN,
     CONF_CHILD_LOCK_PIN,
     CONF_LED_FADE_PIN,
@@ -32,6 +37,11 @@ from .const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_AQI_CATEGORY_PIN,
     DEFAULT_AQI_PIN,
+    DEFAULT_AUTO_HYSTERESIS,
+    DEFAULT_AUTO_PRESET_ENABLED,
+    DEFAULT_AUTO_THRESHOLD_1,
+    DEFAULT_AUTO_THRESHOLD_2,
+    DEFAULT_AUTO_THRESHOLD_3,
     DEFAULT_BEEP_PIN,
     DEFAULT_CHILD_LOCK_PIN,
     DEFAULT_LED_FADE_PIN,
@@ -185,6 +195,37 @@ class WindmillOptionsFlow(OptionsFlow):
                     CONF_BEEP_PIN,
                     default=options.get(CONF_BEEP_PIN, DEFAULT_BEEP_PIN),
                 ): str,
+                # --- "Auto" preset (AQI-driven, emulated in software) ---
+                vol.Required(
+                    CONF_AUTO_PRESET_ENABLED,
+                    default=options.get(
+                        CONF_AUTO_PRESET_ENABLED, DEFAULT_AUTO_PRESET_ENABLED
+                    ),
+                ): bool,
+                vol.Required(
+                    CONF_AUTO_THRESHOLD_1,
+                    default=options.get(
+                        CONF_AUTO_THRESHOLD_1, DEFAULT_AUTO_THRESHOLD_1
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=500)),
+                vol.Required(
+                    CONF_AUTO_THRESHOLD_2,
+                    default=options.get(
+                        CONF_AUTO_THRESHOLD_2, DEFAULT_AUTO_THRESHOLD_2
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=500)),
+                vol.Required(
+                    CONF_AUTO_THRESHOLD_3,
+                    default=options.get(
+                        CONF_AUTO_THRESHOLD_3, DEFAULT_AUTO_THRESHOLD_3
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=500)),
+                vol.Required(
+                    CONF_AUTO_HYSTERESIS,
+                    default=options.get(
+                        CONF_AUTO_HYSTERESIS, DEFAULT_AUTO_HYSTERESIS
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
                 vol.Required(
                     CONF_UPDATE_INTERVAL,
                     default=options.get(
