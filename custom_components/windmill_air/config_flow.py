@@ -25,7 +25,6 @@ from .const import (
     CONF_AUTO_THRESHOLD_1,
     CONF_AUTO_THRESHOLD_2,
     CONF_AUTO_THRESHOLD_3,
-    CONF_AUTO_USE_CATEGORY,
     CONF_BEEP_PIN,
     CONF_CHILD_LOCK_PIN,
     CONF_LED_FADE_PIN,
@@ -43,7 +42,6 @@ from .const import (
     DEFAULT_AUTO_THRESHOLD_1,
     DEFAULT_AUTO_THRESHOLD_2,
     DEFAULT_AUTO_THRESHOLD_3,
-    DEFAULT_AUTO_USE_CATEGORY,
     DEFAULT_BEEP_PIN,
     DEFAULT_CHILD_LOCK_PIN,
     DEFAULT_LED_FADE_PIN,
@@ -235,12 +233,6 @@ class WindmillOptionsFlow(OptionsFlow):
                         CONF_AUTO_HYSTERESIS, DEFAULT_AUTO_HYSTERESIS
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=100)),
-                vol.Required(
-                    CONF_AUTO_USE_CATEGORY,
-                    default=options.get(
-                        CONF_AUTO_USE_CATEGORY, DEFAULT_AUTO_USE_CATEGORY
-                    ),
-                ): bool,
                 vol.Required(
                     CONF_UPDATE_INTERVAL,
                     default=options.get(
