@@ -167,24 +167,26 @@ async def test_eco_and_sleep_presets(hass: HomeAssistant, aioclient_mock) -> Non
     assert fan.attributes["percentage"] is None  # a preset, not a speed
 
 
-async def _refresh_with(hass, aioclient_mock, coordinator, **pins) -> None:
-    """Re-poll the (mocked) cloud with an updated pin snapshot.
+async def _refresh_category(hass, aioclient_mock, coordinator, category, **pins):
+    """Re-poll the (mocked) cloud with an AQI category (V16) and pin overrides.
 
     Uses async_refresh (not async_request_refresh, which is debounced) so the
     poll — and the auto driver's _handle_coordinator_update — run immediately.
     """
     aioclient_mock.clear_requests()
-    mock_cloud(aioclient_mock, pins={**PINS, **pins})
+    mock_cloud(aioclient_mock, pins={**PINS, **pins}, label=category)
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
 
-async def _engage_auto_at(hass, aioclient_mock, entry, aqi, seed_speed):
-    """Load an AQI reading, then engage the auto preset; return the coordinator."""
+async def _engage_auto(hass, aioclient_mock, entry, category, seed_speed):
+    """Load an AQI category + seed speed, then engage auto; return the coordinator."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    await _refresh_with(hass, aioclient_mock, coordinator, v1=aqi, v3=seed_speed)
+    await _refresh_category(
+        hass, aioclient_mock, coordinator, category, v3=seed_speed
+    )
     aioclient_mock.clear_requests()
-    mock_cloud(aioclient_mock, pins={**PINS, "v1": aqi})
+    mock_cloud(aioclient_mock, pins={**PINS, "v3": seed_speed}, label=category)
     await hass.services.async_call(
         "fan",
         "set_preset_mode",
@@ -194,13 +196,13 @@ async def _engage_auto_at(hass, aioclient_mock, entry, aqi, seed_speed):
     return coordinator
 
 
-async def test_auto_preset_sets_speed_from_aqi(
+async def test_auto_preset_sets_speed_from_category(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
     entry = await _setup_entry(hass, aioclient_mock)
-    # AQI 120 falls in the speed-3 band (thresholds 50/100/150); seed a manual
-    # speed 1 so the auto write is clearly the AQI-driven choice, not a no-op.
-    await _engage_auto_at(hass, aioclient_mock, entry, aqi=120, seed_speed=1)
+    # "Bad" (Windmill 101-150) maps to speed 3; seed a manual speed 1 so the
+    # auto write is clearly the category-driven choice, not a no-op.
+    await _engage_auto(hass, aioclient_mock, entry, category="Bad", seed_speed=1)
 
     assert any("v3=3" in q for q in _last_updates(aioclient_mock))
     fan = hass.states.get("fan.windmill")
@@ -208,33 +210,20 @@ async def test_auto_preset_sets_speed_from_aqi(
     assert fan.state == "on"
 
 
-async def test_auto_follows_aqi_across_a_poll(
+async def test_auto_follows_category_across_a_poll(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
     entry = await _setup_entry(hass, aioclient_mock)
-    coordinator = await _engage_auto_at(
-        hass, aioclient_mock, entry, aqi=120, seed_speed=1
-    )
-
-    # AQI spikes to 200 (speed-4 band). The device still reports the old speed
-    # 3, so the auto driver must write the new speed on this update.
-    await _refresh_with(hass, aioclient_mock, coordinator, v1=200, v3=3)
-    assert any("v3=4" in q for q in _last_updates(aioclient_mock))
-    assert hass.states.get("fan.windmill").attributes["preset_mode"] == "auto"
-
-
-async def test_auto_hysteresis_holds_near_boundary(
-    hass: HomeAssistant, aioclient_mock
-) -> None:
-    entry = await _setup_entry(hass, aioclient_mock)
-    coordinator = await _engage_auto_at(
-        hass, aioclient_mock, entry, aqi=120, seed_speed=1
+    coordinator = await _engage_auto(
+        hass, aioclient_mock, entry, category="Bad", seed_speed=1
     )  # -> speed 3
 
-    # AQI drifts to 95: naive band is speed 2, but stepping down from 3 needs
-    # AQI < 90 (boundary 100 minus hysteresis 10), so the speed must hold.
-    await _refresh_with(hass, aioclient_mock, coordinator, v1=95, v3=3)
-    assert not any("v3=" in q for q in _last_updates(aioclient_mock))
+    # Air quality worsens to "Unhealthy" (speed 4). The device still reports the
+    # old speed 3, so the auto driver must write the new speed on this update.
+    await _refresh_category(
+        hass, aioclient_mock, coordinator, "Unhealthy", v3=3
+    )
+    assert any("v3=4" in q for q in _last_updates(aioclient_mock))
     assert hass.states.get("fan.windmill").attributes["preset_mode"] == "auto"
 
 
@@ -242,10 +231,10 @@ async def test_manual_speed_exits_auto(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
     entry = await _setup_entry(hass, aioclient_mock)
-    await _engage_auto_at(hass, aioclient_mock, entry, aqi=120, seed_speed=1)
+    await _engage_auto(hass, aioclient_mock, entry, category="Bad", seed_speed=1)
 
     aioclient_mock.clear_requests()
-    mock_cloud(aioclient_mock, pins={**PINS, "v1": 120, "v3": 4})
+    mock_cloud(aioclient_mock, pins={**PINS, "v3": 4}, label="Bad")
     await hass.services.async_call(
         "fan",
         "set_percentage",
@@ -259,10 +248,10 @@ async def test_manual_speed_exits_auto(
 
 async def test_eco_exits_auto(hass: HomeAssistant, aioclient_mock) -> None:
     entry = await _setup_entry(hass, aioclient_mock)
-    await _engage_auto_at(hass, aioclient_mock, entry, aqi=120, seed_speed=1)
+    await _engage_auto(hass, aioclient_mock, entry, category="Bad", seed_speed=1)
 
     aioclient_mock.clear_requests()
-    mock_cloud(aioclient_mock, pins={**PINS, "v1": 120, "v3": 5})
+    mock_cloud(aioclient_mock, pins={**PINS, "v3": 5}, label="Bad")
     await hass.services.async_call(
         "fan",
         "set_preset_mode",
@@ -270,32 +259,6 @@ async def test_eco_exits_auto(hass: HomeAssistant, aioclient_mock) -> None:
         blocking=True,
     )
     assert hass.states.get("fan.windmill").attributes["preset_mode"] == "Eco"
-
-
-async def test_auto_from_category_sets_speed(
-    hass: HomeAssistant, aioclient_mock
-) -> None:
-    # With auto_use_category, auto drives off the AQI status text (V16), not V1.
-    entry = await _setup_entry(
-        hass, aioclient_mock, options={"auto_use_category": True}
-    )
-    coordinator = hass.data[DOMAIN][entry.entry_id]
-    # Category becomes "Bad" (Windmill 101-150) -> speed 3.
-    aioclient_mock.clear_requests()
-    mock_cloud(aioclient_mock, pins=PINS, label="Bad")
-    await coordinator.async_refresh()
-    await hass.async_block_till_done()
-
-    aioclient_mock.clear_requests()
-    mock_cloud(aioclient_mock, pins={**PINS, "v3": 3}, label="Bad")
-    await hass.services.async_call(
-        "fan",
-        "set_preset_mode",
-        {"entity_id": "fan.windmill", "preset_mode": "auto"},
-        blocking=True,
-    )
-    assert any("v3=3" in q for q in _last_updates(aioclient_mock))
-    assert hass.states.get("fan.windmill").attributes["preset_mode"] == "auto"
 
 
 async def test_speed_count_clamped_below_eco(

@@ -16,11 +16,11 @@ There's a community integration for the Windmill **AC**, but nothing for the
 
 ## Features
 
-- **Fan** — power, 4 fan speeds, and presets: **auto** (AQI-driven), **Eco**,
+- **Fan** — power, 4 fan speeds, and presets: **auto** (air-quality-driven), **Eco**,
   **Sleep: Whisper**, **Sleep: White noise**
-- **Auto preset** — an AQI-driven mode the integration emulates (the device has no
-  hardware auto): while active it sets the fan speed from the air-quality reading. Named
-  exactly `auto` so Home Assistant wires it to Apple Home's **Auto/Manual** toggle.
+- **Auto preset** — a mode the integration emulates (the device has no hardware auto): while
+  active it sets the fan speed from the air-quality category (Good/Moderate/Bad/Unhealthy).
+  Named exactly `auto` so Home Assistant wires it to Apple Home's **Auto/Manual** toggle.
 - **Air quality** — numeric AQI (0–500) sensor and a Good/Moderate/… category sensor
 - **Switches** — child lock, display auto-dim, beep (audible feedback)
 - **Diagnostic sensors** for every unmapped datastream, to help map other units
@@ -61,9 +61,9 @@ usually needed.
 
 | Entity | Source | Notes |
 |--------|--------|-------|
-| `fan.windmill…` | V0 power, V3 mode, V1 AQI | 4-speed slider + auto / Eco / Sleep presets |
+| `fan.windmill…` | V0 power, V3 mode, V16 category | 4-speed slider + auto / Eco / Sleep presets |
 | `sensor.…air_quality_index` | V1 | numeric AQI 0–500 |
-| `sensor.…air_quality` | V16 | category: Good / Moderate / … |
+| `sensor.…air_quality` | V16 | category: Good / Moderate / … (drives the auto preset) |
 | `switch.…child_lock` | V11 | |
 | `switch.…display_auto_dim` | V5 | LED auto-fade after interaction |
 | `switch.…beep` | V6 | audible feedback |
@@ -90,44 +90,20 @@ speeds and the Eco / Sleep values. This integration emulates one in software:
 
 - Selecting the **auto** preset marks the fan as "auto-engaged" (tracked inside the
   integration, not on any pin) and powers the fan on.
-- On every poll, while engaged, the integration reads the air quality (the numeric AQI pin,
-  or the category text — see below) and writes the matching numbered speed to V3 — worse air
-  quality → higher speed. The speed slider keeps showing the current auto-selected speed.
-- **Hysteresis** (a configurable AQI dead-band) keeps the speed from flapping: it's applied
-  on the way **down only**, so the fan ramps up promptly and is slow to ease off.
+- On every poll, while engaged, the integration reads the **air-quality category** (V16 — the
+  device's own Good / Moderate / Bad / Unhealthy status) and writes the matching numbered
+  speed to V3 — worse air quality → higher speed. The speed slider keeps showing the current
+  auto-selected speed.
 - Setting a **manual speed**, or picking **Eco** / **Sleep**, or turning the fan **off**,
   exits auto.
 
 The preset is named exactly `auto` so that, when the fan is exposed to Apple Home as an
 `air_purifier` accessory, Home's **Auto/Manual** toggle drives it.
 
-### Auto thresholds (defaults)
+### Category → speed mapping
 
-Tune these in the **Configure** dialog. Thresholds are AQI values on the 0–500 scale; the
-defaults target the standard 4-speed unit. The threshold is the **step-up** point — the fan
-moves to the next speed as soon as the AQI reaches it:
-
-| AQI rising (V1) | Auto speed |
-|----------|-----------|
-| below 50 | 1 |
-| 50+ | 2 |
-| 100+ | 3 |
-| 150+ | 4 |
-
-Hysteresis (default **10** AQI points) applies only when the AQI is **falling**: from a
-given speed it won't drop to the next one down until the AQI has fallen a full hysteresis
-below that boundary. So with the defaults it steps **up** at 50 / 100 / 150 and steps **down**
-at 40 / 90 / 140 — no oscillation right at a boundary. The auto preset can be turned off
-entirely with the **Enable the "auto" preset** option (it also hides when no air-quality
-source is mapped). Auto state is in-memory, so it resets to manual after a Home Assistant
-restart or an options change — just toggle Auto again.
-
-### Driving auto from the air-quality category
-
-Some units stop reporting a useful numeric AQI on V1 (it gets stuck at a fixed value) while
-the **category** pin (V16 — the Good / Moderate / Bad / Unhealthy status) keeps updating. If
-that's your case, enable **Auto: use the air-quality category** in the Configure dialog. Auto
-then reads the status text and maps it to a speed through the same thresholds:
+Auto follows the device's air-quality category (the same status behind the purifier's
+indicator light, which is PM2.5-based). The default mapping matches the 4-speed unit:
 
 | Category (V16) | AQI band | Auto speed |
 |----------------|----------|-----------|
@@ -139,6 +115,15 @@ then reads the status text and maps it to a speed through the same thresholds:
 Matching is case-insensitive and by keyword, and any unrecognized status simply holds the
 current speed. (Other AQI wordings — "Unhealthy for Sensitive Groups", "Very Unhealthy",
 "Hazardous" — are also understood, for units that use them.)
+
+The category is converted to a representative AQI and passed through three tunable
+**thresholds** (defaults 50 / 100 / 150, on the 0–500 scale) that decide which status bumps
+which speed; a **hysteresis** dead-band (default 10) eases the speed back down only after the
+air quality improves past a threshold. Adjust both in the **Configure** dialog — the defaults
+give the table above and rarely need changing. The preset can be turned off with the
+**Enable the "auto" preset** option (it also hides if no category pin is mapped). Auto state
+is in-memory, so it resets to manual after a Home Assistant restart or an options change —
+just re-select Auto.
 
 ## Air quality readout (PM2.5) — status
 
@@ -160,13 +145,13 @@ snapshot of all current pin values. Confirmed default mapping:
 | Pin | Function |
 |-----|----------|
 | V0 | Power |
-| V1 | AQI (numeric) — also drives the auto preset |
+| V1 | AQI (numeric) |
 | V3 | Mode: 1–4 speeds, 5 = Eco, 6 = Sleep (auto writes a numbered speed here) |
 | V4 | Sleep sub-mode: 1 = Whisper, 2 = White noise |
 | V5 | Display auto-dim |
 | V6 | Beep |
 | V11 | Child lock |
-| V16 | AQI category |
+| V16 | AQI category (Good / Moderate / Bad / Unhealthy — drives the auto preset) |
 
 ### Discovering pins on a different unit
 
@@ -188,9 +173,9 @@ pytest
 ```
 
 The suite runs the integration end-to-end against a mocked cloud (config flow,
-entities, fan/preset/switch writes, the AQI-driven auto preset and its hysteresis,
-the getAll-omission fallback, the category label override, offline handling), plus
-pure unit tests for the AQI → speed mapping.
+entities, fan/preset/switch writes, the category-driven auto preset, the
+getAll-omission fallback, the category label override, offline handling), plus
+pure unit tests for the category → AQI → speed mapping and hysteresis.
 
 ### Testing this build against your real device, in parallel
 

@@ -30,25 +30,21 @@ from homeassistant.util.percentage import (
 
 from .const import (
     CONF_AQI_CATEGORY_PIN,
-    CONF_AQI_PIN,
     CONF_AUTO_HYSTERESIS,
     CONF_AUTO_PRESET_ENABLED,
     CONF_AUTO_THRESHOLD_1,
     CONF_AUTO_THRESHOLD_2,
     CONF_AUTO_THRESHOLD_3,
-    CONF_AUTO_USE_CATEGORY,
     CONF_MODE_PIN,
     CONF_POWER_PIN,
     CONF_SLEEP_SUBMODE_PIN,
     CONF_SPEED_COUNT,
     DEFAULT_AQI_CATEGORY_PIN,
-    DEFAULT_AQI_PIN,
     DEFAULT_AUTO_HYSTERESIS,
     DEFAULT_AUTO_PRESET_ENABLED,
     DEFAULT_AUTO_THRESHOLD_1,
     DEFAULT_AUTO_THRESHOLD_2,
     DEFAULT_AUTO_THRESHOLD_3,
-    DEFAULT_AUTO_USE_CATEGORY,
     DEFAULT_MODE_PIN,
     DEFAULT_POWER_PIN,
     DEFAULT_SLEEP_SUBMODE_PIN,
@@ -165,7 +161,8 @@ class WindmillFan(WindmillEntity, FanEntity):
                 MODE_ECO - 1,
             ),
         )
-        self._aqi_pin: str = options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN)
+        # Auto follows the device's air-quality category (Good/Moderate/Bad/
+        # Unhealthy) — the numeric AQI pin isn't reliable across units.
         self._aqi_category_pin: str = options.get(
             CONF_AQI_CATEGORY_PIN, DEFAULT_AQI_CATEGORY_PIN
         )
@@ -185,10 +182,6 @@ class WindmillFan(WindmillEntity, FanEntity):
         self._auto_hysteresis: int = int(
             options.get(CONF_AUTO_HYSTERESIS, DEFAULT_AUTO_HYSTERESIS)
         )
-        # Drive auto from the AQI category text instead of the numeric AQI pin.
-        self._auto_use_category: bool = bool(
-            options.get(CONF_AUTO_USE_CATEGORY, DEFAULT_AUTO_USE_CATEGORY)
-        )
         # "auto" has no V3 value: track it here, plus the speed we last drove.
         self._auto_engaged = False
         self._auto_speed: int | None = None
@@ -200,12 +193,12 @@ class WindmillFan(WindmillEntity, FanEntity):
             | FanEntityFeature.PRESET_MODE
         )
         # "auto" first so Apple Home folds it into the Auto/Manual toggle.
-        # It needs a usable air-quality source: the category pin when driving
-        # off the category, otherwise the numeric AQI pin.
-        auto_source = (
-            self._aqi_category_pin if self._auto_use_category else self._aqi_pin
+        # It needs the air-quality category pin to react to.
+        presets = (
+            [PRESET_AUTO]
+            if (self._auto_enabled and self._aqi_category_pin)
+            else []
         )
-        presets = [PRESET_AUTO] if (self._auto_enabled and auto_source) else []
         presets.append(PRESET_ECO)
         if self._submode_pin:
             presets += [PRESET_SLEEP_WHISPER, PRESET_SLEEP_WHITE_NOISE]
@@ -267,10 +260,8 @@ class WindmillFan(WindmillEntity, FanEntity):
         super()._handle_coordinator_update()
 
     def _current_aqi(self) -> int | None:
-        """The AQI auto should react to: category-derived or the numeric pin."""
-        if self._auto_use_category:
-            return category_to_aqi(self.coordinator.pin_value(self._aqi_category_pin))
-        return as_int(self.coordinator.pin_value(self._aqi_pin))
+        """AQI (derived from the air-quality category) that auto reacts to."""
+        return category_to_aqi(self.coordinator.pin_value(self._aqi_category_pin))
 
     def _apply_auto_speed(self) -> None:
         """Drive V3 to the AQI-appropriate speed if it needs to change."""
