@@ -93,8 +93,8 @@ speeds and the Eco / Sleep values. This integration emulates one in software:
 - On every poll, while engaged, the integration reads the AQI pin (V1) and writes the
   matching numbered speed to V3 — worse air quality → higher speed. The speed slider keeps
   showing the current auto-selected speed.
-- **Hysteresis** (a configurable AQI dead-band) around each threshold stops the speed from
-  flapping when the AQI wobbles across a boundary.
+- **Hysteresis** (a configurable AQI dead-band) keeps the speed from flapping: it's applied
+  on the way **down only**, so the fan ramps up promptly and is slow to ease off.
 - Setting a **manual speed**, or picking **Eco** / **Sleep**, or turning the fan **off**,
   exits auto.
 
@@ -104,18 +104,21 @@ The preset is named exactly `auto` so that, when the fan is exposed to Apple Hom
 ### Auto thresholds (defaults)
 
 Tune these in the **Configure** dialog. Thresholds are AQI values on the 0–500 scale; the
-defaults target the standard 4-speed unit:
+defaults target the standard 4-speed unit. The threshold is the **step-up** point — the fan
+moves to the next speed as soon as the AQI reaches it:
 
-| AQI (V1) | Auto speed |
+| AQI rising (V1) | Auto speed |
 |----------|-----------|
 | below 50 | 1 |
-| 50–99 | 2 |
-| 100–149 | 3 |
+| 50+ | 2 |
+| 100+ | 3 |
 | 150+ | 4 |
 
-Hysteresis defaults to **10** AQI points: from a given speed, the AQI must cross the next
-boundary by more than the hysteresis before the speed steps. The auto preset can be turned
-off entirely with the **Enable the "auto" preset** option (it also hides when no AQI pin is
+Hysteresis (default **10** AQI points) applies only when the AQI is **falling**: from a
+given speed it won't drop to the next one down until the AQI has fallen a full hysteresis
+below that boundary. So with the defaults it steps **up** at 50 / 100 / 150 and steps **down**
+at 40 / 90 / 140 — no oscillation right at a boundary. The auto preset can be turned off
+entirely with the **Enable the "auto" preset** option (it also hides when no AQI pin is
 mapped). Auto state is in-memory, so it resets to manual after a Home Assistant restart or
 an options change — just toggle Auto again.
 

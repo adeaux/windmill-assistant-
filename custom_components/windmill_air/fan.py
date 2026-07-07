@@ -75,11 +75,12 @@ def auto_target_speed(
 
     ``thresholds`` is an ascending list of AQI boundaries: the naive speed is
     ``1 + (how many thresholds the AQI meets)``, clamped to ``speed_count``.
-    ``current`` is the speed auto last commanded (``None`` on first engage). To
-    damp oscillation near a boundary, a step up needs the AQI to exceed the
-    boundary above ``current`` by ``hysteresis``, and a step down needs it to
-    fall below the boundary below ``current`` by ``hysteresis``; otherwise the
-    speed holds.
+    ``current`` is the speed auto last commanded (``None`` on first engage).
+
+    Hysteresis is applied on the way **down only**, so the purifier ramps up
+    promptly and is slow to ease off: a step **up** happens as soon as the AQI
+    reaches a threshold, while a step **down** needs the AQI to fall
+    ``hysteresis`` below the boundary; in between, the speed holds.
     """
     if not thresholds:
         return 1
@@ -90,12 +91,12 @@ def auto_target_speed(
         return naive
     current = max(1, min(current, speed_count))
     if naive > current:
-        # thresholds[current - 1] is the boundary between current and current+1.
-        boundary = thresholds[min(current - 1, top)]
-        return naive if aqi >= boundary + hysteresis else current
+        # Rising: step up as soon as the AQI clears the threshold (no dead-band).
+        return naive
     if naive < current:
-        # thresholds[current - 2] is the boundary between current-1 and current
-        # (clamped for speed counts beyond the number of thresholds).
+        # Falling: thresholds[current - 2] is the boundary between current-1 and
+        # current (clamped for speed counts beyond the number of thresholds).
+        # Only step down once the AQI drops a full hysteresis below it.
         boundary = thresholds[min(current - 2, top)]
         return naive if aqi < boundary - hysteresis else current
     return current
@@ -124,8 +125,14 @@ class WindmillFan(WindmillEntity, FanEntity):
         self._submode_pin: str = options.get(
             CONF_SLEEP_SUBMODE_PIN, DEFAULT_SLEEP_SUBMODE_PIN
         )
-        self._speed_count: int = int(
-            options.get(CONF_SPEED_COUNT, DEFAULT_SPEED_COUNT)
+        # Clamp to MODE_ECO - 1: a speed at the Eco (5) / Sleep (6) enum value
+        # would make the top of the slider write Eco instead of a fan speed.
+        self._speed_count: int = max(
+            1,
+            min(
+                int(options.get(CONF_SPEED_COUNT, DEFAULT_SPEED_COUNT)),
+                MODE_ECO - 1,
+            ),
         )
         self._aqi_pin: str = options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN)
 
