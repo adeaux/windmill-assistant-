@@ -7,6 +7,11 @@ both the numbered fan speeds and the special Eco / Sleep values:
     MODE_ECO (5)   -> Eco                      -> preset
     MODE_SLEEP (6) -> Sleep                    -> preset, with a sub-mode pin
                                                   (V4: Whisper / White noise)
+
+There is no hardware "auto" value on V3, so the "auto" preset is emulated in
+software: engaged-state is tracked on the entity, and while engaged the
+integration writes a numbered speed to V3 on every coordinator update, chosen
+from the AQI reading (V1) with hysteresis so it does not flap between speeds.
 """
 
 from __future__ import annotations
@@ -16,7 +21,7 @@ from typing import Any
 
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.util.percentage import (
     percentage_to_ranged_value,
@@ -24,10 +29,22 @@ from homeassistant.util.percentage import (
 )
 
 from .const import (
+    CONF_AQI_PIN,
+    CONF_AUTO_HYSTERESIS,
+    CONF_AUTO_PRESET_ENABLED,
+    CONF_AUTO_THRESHOLD_1,
+    CONF_AUTO_THRESHOLD_2,
+    CONF_AUTO_THRESHOLD_3,
     CONF_MODE_PIN,
     CONF_POWER_PIN,
     CONF_SLEEP_SUBMODE_PIN,
     CONF_SPEED_COUNT,
+    DEFAULT_AQI_PIN,
+    DEFAULT_AUTO_HYSTERESIS,
+    DEFAULT_AUTO_PRESET_ENABLED,
+    DEFAULT_AUTO_THRESHOLD_1,
+    DEFAULT_AUTO_THRESHOLD_2,
+    DEFAULT_AUTO_THRESHOLD_3,
     DEFAULT_MODE_PIN,
     DEFAULT_POWER_PIN,
     DEFAULT_SLEEP_SUBMODE_PIN,
@@ -35,6 +52,7 @@ from .const import (
     DOMAIN,
     MODE_ECO,
     MODE_SLEEP,
+    PRESET_AUTO,
     PRESET_ECO,
     PRESET_SLEEP_WHISPER,
     PRESET_SLEEP_WHITE_NOISE,
@@ -44,6 +62,43 @@ from .const import (
 from .coordinator import WindmillCoordinator
 from .entity import WindmillEntity
 from .util import as_bool, as_int
+
+
+def auto_target_speed(
+    aqi: int,
+    thresholds: list[int],
+    speed_count: int,
+    current: int | None,
+    hysteresis: int,
+) -> int:
+    """Pick a fan speed (1..speed_count) for an AQI reading, with hysteresis.
+
+    ``thresholds`` is an ascending list of AQI boundaries: the naive speed is
+    ``1 + (how many thresholds the AQI meets)``, clamped to ``speed_count``.
+    ``current`` is the speed auto last commanded (``None`` on first engage). To
+    damp oscillation near a boundary, a step up needs the AQI to exceed the
+    boundary above ``current`` by ``hysteresis``, and a step down needs it to
+    fall below the boundary below ``current`` by ``hysteresis``; otherwise the
+    speed holds.
+    """
+    if not thresholds:
+        return 1
+    top = len(thresholds) - 1
+    naive = 1 + sum(1 for t in thresholds if aqi >= t)
+    naive = max(1, min(naive, speed_count))
+    if current is None:
+        return naive
+    current = max(1, min(current, speed_count))
+    if naive > current:
+        # thresholds[current - 1] is the boundary between current and current+1.
+        boundary = thresholds[min(current - 1, top)]
+        return naive if aqi >= boundary + hysteresis else current
+    if naive < current:
+        # thresholds[current - 2] is the boundary between current-1 and current
+        # (clamped for speed counts beyond the number of thresholds).
+        boundary = thresholds[min(current - 2, top)]
+        return naive if aqi < boundary - hysteresis else current
+    return current
 
 
 async def async_setup_entry(
@@ -72,6 +127,26 @@ class WindmillFan(WindmillEntity, FanEntity):
         self._speed_count: int = int(
             options.get(CONF_SPEED_COUNT, DEFAULT_SPEED_COUNT)
         )
+        self._aqi_pin: str = options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN)
+
+        # --- Virtual "auto" preset state and tuning ---
+        self._auto_enabled: bool = bool(
+            options.get(CONF_AUTO_PRESET_ENABLED, DEFAULT_AUTO_PRESET_ENABLED)
+        )
+        self._auto_thresholds: list[int] = sorted(
+            int(options.get(key, default))
+            for key, default in (
+                (CONF_AUTO_THRESHOLD_1, DEFAULT_AUTO_THRESHOLD_1),
+                (CONF_AUTO_THRESHOLD_2, DEFAULT_AUTO_THRESHOLD_2),
+                (CONF_AUTO_THRESHOLD_3, DEFAULT_AUTO_THRESHOLD_3),
+            )
+        )
+        self._auto_hysteresis: int = int(
+            options.get(CONF_AUTO_HYSTERESIS, DEFAULT_AUTO_HYSTERESIS)
+        )
+        # "auto" has no V3 value: track it here, plus the speed we last drove.
+        self._auto_engaged = False
+        self._auto_speed: int | None = None
 
         self._attr_supported_features = (
             FanEntityFeature.TURN_ON
@@ -79,7 +154,9 @@ class WindmillFan(WindmillEntity, FanEntity):
             | FanEntityFeature.SET_SPEED
             | FanEntityFeature.PRESET_MODE
         )
-        presets = [PRESET_ECO]
+        # "auto" first so Apple Home folds it into the Auto/Manual toggle.
+        presets = [PRESET_AUTO] if (self._auto_enabled and self._aqi_pin) else []
+        presets.append(PRESET_ECO)
         if self._submode_pin:
             presets += [PRESET_SLEEP_WHISPER, PRESET_SLEEP_WHITE_NOISE]
         self._attr_preset_modes = presets
@@ -111,6 +188,10 @@ class WindmillFan(WindmillEntity, FanEntity):
     def preset_mode(self) -> str | None:
         if self.is_on is False:
             return None
+        # "auto" is virtual: report it while engaged even though V3 holds a
+        # numbered speed (which still drives the percentage slider).
+        if self._auto_engaged:
+            return PRESET_AUTO
         mode = self._mode()
         if mode == MODE_ECO:
             return PRESET_ECO
@@ -127,6 +208,32 @@ class WindmillFan(WindmillEntity, FanEntity):
         await self.coordinator.api.set_pin(pin, value)
         self.coordinator.set_pin_optimistic(pin, value)
 
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        # While "auto" is engaged, re-derive the speed from the latest AQI on
+        # every update (poll or optimistic write) before notifying HA.
+        if self._auto_engaged and self.is_on:
+            self._apply_auto_speed()
+        super()._handle_coordinator_update()
+
+    def _apply_auto_speed(self) -> None:
+        """Drive V3 to the AQI-appropriate speed if it needs to change."""
+        aqi = as_int(self.coordinator.pin_value(self._aqi_pin))
+        if aqi is None:
+            return
+        target = auto_target_speed(
+            aqi,
+            self._auto_thresholds,
+            self._speed_count,
+            self._auto_speed,
+            self._auto_hysteresis,
+        )
+        self._auto_speed = target
+        # Idempotent: only write when V3 differs, so the optimistic-update
+        # loop (set_pin_optimistic -> listeners -> here) settles immediately.
+        if self._mode() != target:
+            self.hass.async_create_task(self._write(self._mode_pin, target))
+
     async def async_turn_on(
         self,
         percentage: int | None = None,
@@ -141,6 +248,7 @@ class WindmillFan(WindmillEntity, FanEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
+        self._auto_engaged = False  # powering off exits auto
         await self._write(self._power_pin, 0)
         await self.coordinator.async_request_refresh()
 
@@ -148,6 +256,7 @@ class WindmillFan(WindmillEntity, FanEntity):
         if percentage == 0:
             await self.async_turn_off()
             return
+        self._auto_engaged = False  # a manual speed exits auto
         if self.is_on is False:
             await self._write(self._power_pin, 1)
         # Writing a numbered speed to the mode pin leaves Eco / Sleep.
@@ -160,6 +269,11 @@ class WindmillFan(WindmillEntity, FanEntity):
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         if self.is_on is False:
             await self._write(self._power_pin, 1)
+        if preset_mode.casefold() == PRESET_AUTO:
+            await self._engage_auto()
+            return
+        # Any other preset exits auto.
+        self._auto_engaged = False
         if preset_mode == PRESET_ECO:
             await self._write(self._mode_pin, MODE_ECO)
         elif preset_mode == PRESET_SLEEP_WHISPER:
@@ -170,4 +284,23 @@ class WindmillFan(WindmillEntity, FanEntity):
             await self._write(self._mode_pin, MODE_SLEEP)
             if self._submode_pin:
                 await self._write(self._submode_pin, SLEEP_WHITE_NOISE)
+        await self.coordinator.async_request_refresh()
+
+    async def _engage_auto(self) -> None:
+        """Enter the virtual auto preset and set the initial speed from AQI."""
+        self._auto_engaged = True
+        # Seed hysteresis from the current numbered speed, if V3 holds one.
+        mode = self._mode()
+        self._auto_speed = mode if mode and 1 <= mode <= self._speed_count else None
+        aqi = as_int(self.coordinator.pin_value(self._aqi_pin))
+        if aqi is not None:
+            target = auto_target_speed(
+                aqi,
+                self._auto_thresholds,
+                self._speed_count,
+                self._auto_speed,
+                self._auto_hysteresis,
+            )
+            self._auto_speed = target
+            await self._write(self._mode_pin, target)
         await self.coordinator.async_request_refresh()
