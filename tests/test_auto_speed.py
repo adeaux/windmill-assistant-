@@ -28,16 +28,25 @@ def test_bands_map_to_speeds(aqi, expected):
     assert auto_target_speed(aqi, THRESHOLDS, SPEED_COUNT, None, HYST) == expected
 
 
-def test_hysteresis_holds_stepping_up():
-    # Boundary between speed 2 and 3 is 100; need >= 110 to step up from 2.
-    assert auto_target_speed(105, THRESHOLDS, SPEED_COUNT, 2, HYST) == 2  # holds
-    assert auto_target_speed(110, THRESHOLDS, SPEED_COUNT, 2, HYST) == 3  # steps
+def test_steps_up_at_threshold_no_dead_band():
+    # Rising: step up as soon as the AQI reaches the threshold (100), not 100+hyst.
+    assert auto_target_speed(99, THRESHOLDS, SPEED_COUNT, 2, HYST) == 2   # below -> holds
+    assert auto_target_speed(100, THRESHOLDS, SPEED_COUNT, 2, HYST) == 3  # at threshold -> steps
 
 
 def test_hysteresis_holds_stepping_down():
     # Boundary between speed 2 and 3 is 100; need < 90 to step down from 3.
     assert auto_target_speed(95, THRESHOLDS, SPEED_COUNT, 3, HYST) == 3  # holds
     assert auto_target_speed(89, THRESHOLDS, SPEED_COUNT, 3, HYST) == 2  # steps
+
+
+def test_hysteresis_is_downward_only():
+    # At exactly 100 the up-point and the resting band agree (speed 3), but once
+    # there it won't drop back to 2 until the AQI falls below 90 -> no flapping.
+    assert auto_target_speed(100, THRESHOLDS, SPEED_COUNT, 2, HYST) == 3  # up at 100
+    assert auto_target_speed(95, THRESHOLDS, SPEED_COUNT, 3, HYST) == 3   # sticky down
+    assert auto_target_speed(90, THRESHOLDS, SPEED_COUNT, 3, HYST) == 3   # still holds
+    assert auto_target_speed(89, THRESHOLDS, SPEED_COUNT, 3, HYST) == 2   # releases
 
 
 def test_large_jump_moves_multiple_speeds():

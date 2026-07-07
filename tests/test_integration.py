@@ -272,6 +272,25 @@ async def test_eco_exits_auto(hass: HomeAssistant, aioclient_mock) -> None:
     assert hass.states.get("fan.windmill").attributes["preset_mode"] == "Eco"
 
 
+async def test_speed_count_clamped_below_eco(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    # A speed_count of 5 would put the top of the slider on the Eco enum value.
+    # It must be clamped so 100% still writes a real fan speed (4), not Eco (5).
+    await _setup_entry(hass, aioclient_mock, options={"speed_count": 5})
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins={**PINS, "v3": 4})
+    await hass.services.async_call(
+        "fan",
+        "set_percentage",
+        {"entity_id": "fan.windmill", "percentage": 100},
+        blocking=True,
+    )
+    assert any("v3=4" in q for q in _last_updates(aioclient_mock))
+    assert not any("v3=5" in q for q in _last_updates(aioclient_mock))
+    assert hass.states.get("fan.windmill").attributes["percentage"] == 100
+
+
 async def test_switch_toggle_writes_pin(hass: HomeAssistant, aioclient_mock) -> None:
     await _setup_entry(hass, aioclient_mock)
     aioclient_mock.clear_requests()

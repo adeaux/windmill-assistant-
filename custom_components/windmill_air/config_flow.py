@@ -51,6 +51,7 @@ from .const import (
     DEFAULT_SPEED_COUNT,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
+    MODE_ECO,
     NAME,
 )
 
@@ -161,10 +162,16 @@ class WindmillOptionsFlow(OptionsFlow):
                     CONF_MODE_PIN,
                     default=options.get(CONF_MODE_PIN, DEFAULT_MODE_PIN),
                 ): str,
+                # Cap at MODE_ECO - 1: values >= MODE_ECO (5) / MODE_SLEEP (6)
+                # would collide with the Eco/Sleep enum on the mode pin, so the
+                # top speed (100%) must never reach them.
                 vol.Required(
                     CONF_SPEED_COUNT,
-                    default=options.get(CONF_SPEED_COUNT, DEFAULT_SPEED_COUNT),
-                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+                    default=min(
+                        options.get(CONF_SPEED_COUNT, DEFAULT_SPEED_COUNT),
+                        MODE_ECO - 1,
+                    ),
+                ): vol.All(vol.Coerce(int), vol.Range(min=1, max=MODE_ECO - 1)),
                 vol.Optional(
                     CONF_SLEEP_SUBMODE_PIN,
                     default=options.get(
