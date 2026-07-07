@@ -90,9 +90,9 @@ speeds and the Eco / Sleep values. This integration emulates one in software:
 
 - Selecting the **auto** preset marks the fan as "auto-engaged" (tracked inside the
   integration, not on any pin) and powers the fan on.
-- On every poll, while engaged, the integration reads the AQI pin (V1) and writes the
-  matching numbered speed to V3 — worse air quality → higher speed. The speed slider keeps
-  showing the current auto-selected speed.
+- On every poll, while engaged, the integration reads the air quality (the numeric AQI pin,
+  or the category text — see below) and writes the matching numbered speed to V3 — worse air
+  quality → higher speed. The speed slider keeps showing the current auto-selected speed.
 - **Hysteresis** (a configurable AQI dead-band) keeps the speed from flapping: it's applied
   on the way **down only**, so the fan ramps up promptly and is slow to ease off.
 - Setting a **manual speed**, or picking **Eco** / **Sleep**, or turning the fan **off**,
@@ -118,9 +118,27 @@ Hysteresis (default **10** AQI points) applies only when the AQI is **falling**:
 given speed it won't drop to the next one down until the AQI has fallen a full hysteresis
 below that boundary. So with the defaults it steps **up** at 50 / 100 / 150 and steps **down**
 at 40 / 90 / 140 — no oscillation right at a boundary. The auto preset can be turned off
-entirely with the **Enable the "auto" preset** option (it also hides when no AQI pin is
-mapped). Auto state is in-memory, so it resets to manual after a Home Assistant restart or
-an options change — just toggle Auto again.
+entirely with the **Enable the "auto" preset** option (it also hides when no air-quality
+source is mapped). Auto state is in-memory, so it resets to manual after a Home Assistant
+restart or an options change — just toggle Auto again.
+
+### Driving auto from the air-quality category
+
+Some units stop reporting a useful numeric AQI on V1 (it gets stuck at a fixed value) while
+the **category** pin (V16 — the Good / Moderate / Bad / Unhealthy status) keeps updating. If
+that's your case, enable **Auto: use the air-quality category** in the Configure dialog. Auto
+then reads the status text and maps it to a speed through the same thresholds:
+
+| Category (V16) | AQI band | Auto speed |
+|----------------|----------|-----------|
+| Good | 0–50 | 1 |
+| Moderate | 51–100 | 2 |
+| Bad | 101–150 | 3 |
+| Unhealthy | 151+ | 4 |
+
+Matching is case-insensitive and by keyword, and any unrecognized status simply holds the
+current speed. (Other AQI wordings — "Unhealthy for Sensitive Groups", "Very Unhealthy",
+"Hazardous" — are also understood, for units that use them.)
 
 ## Air quality readout (PM2.5) — status
 

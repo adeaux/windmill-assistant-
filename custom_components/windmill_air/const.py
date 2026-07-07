@@ -43,6 +43,9 @@ CONF_AUTO_THRESHOLD_2 = "auto_threshold_2"
 CONF_AUTO_THRESHOLD_3 = "auto_threshold_3"
 # Dead-band (in AQI units) applied around each boundary to stop speed flapping.
 CONF_AUTO_HYSTERESIS = "auto_hysteresis"
+# Drive auto from the AQI *category* text (V16: Good/Moderate/Bad/Unhealthy)
+# instead of the numeric AQI pin — useful when the numeric pin isn't reliable.
+CONF_AUTO_USE_CATEGORY = "auto_use_category"
 
 # --- Defaults (discovered on the Windmill Air Purifier) ------------------
 DEFAULT_POWER_PIN = "v0"
@@ -64,6 +67,7 @@ DEFAULT_AUTO_THRESHOLD_1 = 50
 DEFAULT_AUTO_THRESHOLD_2 = 100
 DEFAULT_AUTO_THRESHOLD_3 = 150
 DEFAULT_AUTO_HYSTERESIS = 10
+DEFAULT_AUTO_USE_CATEGORY = False
 
 # --- Mode-pin enum values (device firmware behavior) ---------------------
 MODE_ECO = 5

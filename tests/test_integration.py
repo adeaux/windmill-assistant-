@@ -272,6 +272,32 @@ async def test_eco_exits_auto(hass: HomeAssistant, aioclient_mock) -> None:
     assert hass.states.get("fan.windmill").attributes["preset_mode"] == "Eco"
 
 
+async def test_auto_from_category_sets_speed(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    # With auto_use_category, auto drives off the AQI status text (V16), not V1.
+    entry = await _setup_entry(
+        hass, aioclient_mock, options={"auto_use_category": True}
+    )
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    # Category becomes "Bad" (Windmill 101-150) -> speed 3.
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins=PINS, label="Bad")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins={**PINS, "v3": 3}, label="Bad")
+    await hass.services.async_call(
+        "fan",
+        "set_preset_mode",
+        {"entity_id": "fan.windmill", "preset_mode": "auto"},
+        blocking=True,
+    )
+    assert any("v3=3" in q for q in _last_updates(aioclient_mock))
+    assert hass.states.get("fan.windmill").attributes["preset_mode"] == "auto"
+
+
 async def test_speed_count_clamped_below_eco(
     hass: HomeAssistant, aioclient_mock
 ) -> None:
