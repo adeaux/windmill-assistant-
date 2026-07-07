@@ -2,7 +2,7 @@
 
 import pytest
 
-from custom_components.windmill_air.fan import auto_target_speed
+from custom_components.windmill_air.fan import auto_target_speed, category_to_aqi
 
 # Default 4-speed device thresholds and dead-band.
 THRESHOLDS = [50, 100, 150]
@@ -61,3 +61,27 @@ def test_no_thresholds_is_safe():
 def test_speed_count_above_thresholds_does_not_index_error():
     # 6 speeds but only 3 thresholds: high seeds must not raise.
     assert auto_target_speed(0, THRESHOLDS, 6, 6, HYST) == 1
+
+
+@pytest.mark.parametrize(
+    ("label", "expected_speed"),
+    [
+        ("Good", 1),  # -> 25
+        ("Moderate", 2),  # -> 75
+        ("Bad", 3),  # Windmill 101-150 -> 125
+        ("Unhealthy", 4),  # Windmill 151+ -> 175
+        ("Very Unhealthy", 4),  # must NOT be caught by the plain "unhealthy" rule
+        ("Unhealthy for Sensitive Groups", 3),  # "sensitive" wins -> 125
+        ("hazardous", 4),
+    ],
+)
+def test_category_maps_to_speed(label, expected_speed):
+    aqi = category_to_aqi(label)
+    assert aqi is not None
+    assert auto_target_speed(aqi, THRESHOLDS, SPEED_COUNT, None, HYST) == expected_speed
+
+
+def test_category_unknown_or_blank_is_none():
+    assert category_to_aqi("Excellent") is None
+    assert category_to_aqi("") is None
+    assert category_to_aqi(None) is None
