@@ -96,6 +96,7 @@ async def test_entities_created(hass: HomeAssistant, aioclient_mock) -> None:
     assert fan.state == "on"  # v0 == 1
     assert fan.attributes["percentage"] == 50  # v3 == 2 of 4 speeds
     assert fan.attributes["preset_modes"] == [
+        "auto",  # first, so Apple Home folds it into the Auto/Manual toggle
         "Eco",
         "Sleep: Whisper",
         "Sleep: White noise",
@@ -164,6 +165,111 @@ async def test_eco_and_sleep_presets(hass: HomeAssistant, aioclient_mock) -> Non
     fan = hass.states.get("fan.windmill")
     assert fan.attributes["preset_mode"] == "Sleep: White noise"
     assert fan.attributes["percentage"] is None  # a preset, not a speed
+
+
+async def _refresh_with(hass, aioclient_mock, coordinator, **pins) -> None:
+    """Re-poll the (mocked) cloud with an updated pin snapshot.
+
+    Uses async_refresh (not async_request_refresh, which is debounced) so the
+    poll — and the auto driver's _handle_coordinator_update — run immediately.
+    """
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins={**PINS, **pins})
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+
+async def _engage_auto_at(hass, aioclient_mock, entry, aqi, seed_speed):
+    """Load an AQI reading, then engage the auto preset; return the coordinator."""
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    await _refresh_with(hass, aioclient_mock, coordinator, v1=aqi, v3=seed_speed)
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins={**PINS, "v1": aqi})
+    await hass.services.async_call(
+        "fan",
+        "set_preset_mode",
+        {"entity_id": "fan.windmill", "preset_mode": "auto"},
+        blocking=True,
+    )
+    return coordinator
+
+
+async def test_auto_preset_sets_speed_from_aqi(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    entry = await _setup_entry(hass, aioclient_mock)
+    # AQI 120 falls in the speed-3 band (thresholds 50/100/150); seed a manual
+    # speed 1 so the auto write is clearly the AQI-driven choice, not a no-op.
+    await _engage_auto_at(hass, aioclient_mock, entry, aqi=120, seed_speed=1)
+
+    assert any("v3=3" in q for q in _last_updates(aioclient_mock))
+    fan = hass.states.get("fan.windmill")
+    assert fan.attributes["preset_mode"] == "auto"
+    assert fan.state == "on"
+
+
+async def test_auto_follows_aqi_across_a_poll(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    entry = await _setup_entry(hass, aioclient_mock)
+    coordinator = await _engage_auto_at(
+        hass, aioclient_mock, entry, aqi=120, seed_speed=1
+    )
+
+    # AQI spikes to 200 (speed-4 band). The device still reports the old speed
+    # 3, so the auto driver must write the new speed on this update.
+    await _refresh_with(hass, aioclient_mock, coordinator, v1=200, v3=3)
+    assert any("v3=4" in q for q in _last_updates(aioclient_mock))
+    assert hass.states.get("fan.windmill").attributes["preset_mode"] == "auto"
+
+
+async def test_auto_hysteresis_holds_near_boundary(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    entry = await _setup_entry(hass, aioclient_mock)
+    coordinator = await _engage_auto_at(
+        hass, aioclient_mock, entry, aqi=120, seed_speed=1
+    )  # -> speed 3
+
+    # AQI drifts to 95: naive band is speed 2, but stepping down from 3 needs
+    # AQI < 90 (boundary 100 minus hysteresis 10), so the speed must hold.
+    await _refresh_with(hass, aioclient_mock, coordinator, v1=95, v3=3)
+    assert not any("v3=" in q for q in _last_updates(aioclient_mock))
+    assert hass.states.get("fan.windmill").attributes["preset_mode"] == "auto"
+
+
+async def test_manual_speed_exits_auto(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    entry = await _setup_entry(hass, aioclient_mock)
+    await _engage_auto_at(hass, aioclient_mock, entry, aqi=120, seed_speed=1)
+
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins={**PINS, "v1": 120, "v3": 4})
+    await hass.services.async_call(
+        "fan",
+        "set_percentage",
+        {"entity_id": "fan.windmill", "percentage": 100},
+        blocking=True,
+    )
+    fan = hass.states.get("fan.windmill")
+    assert fan.attributes["preset_mode"] is None  # auto disengaged
+    assert fan.attributes["percentage"] == 100
+
+
+async def test_eco_exits_auto(hass: HomeAssistant, aioclient_mock) -> None:
+    entry = await _setup_entry(hass, aioclient_mock)
+    await _engage_auto_at(hass, aioclient_mock, entry, aqi=120, seed_speed=1)
+
+    aioclient_mock.clear_requests()
+    mock_cloud(aioclient_mock, pins={**PINS, "v1": 120, "v3": 5})
+    await hass.services.async_call(
+        "fan",
+        "set_preset_mode",
+        {"entity_id": "fan.windmill", "preset_mode": "Eco"},
+        blocking=True,
+    )
+    assert hass.states.get("fan.windmill").attributes["preset_mode"] == "Eco"
 
 
 async def test_switch_toggle_writes_pin(hass: HomeAssistant, aioclient_mock) -> None:

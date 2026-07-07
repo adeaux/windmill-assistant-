@@ -16,8 +16,11 @@ There's a community integration for the Windmill **AC**, but nothing for the
 
 ## Features
 
-- **Fan** — power, 4 fan speeds, and presets: **Eco**, **Sleep: Whisper**,
-  **Sleep: White noise**
+- **Fan** — power, 4 fan speeds, and presets: **auto** (AQI-driven), **Eco**,
+  **Sleep: Whisper**, **Sleep: White noise**
+- **Auto preset** — an AQI-driven mode the integration emulates (the device has no
+  hardware auto): while active it sets the fan speed from the air-quality reading. Named
+  exactly `auto` so Home Assistant wires it to Apple Home's **Auto/Manual** toggle.
 - **Air quality** — numeric AQI (0–500) sensor and a Good/Moderate/… category sensor
 - **Switches** — child lock, display auto-dim, beep (audible feedback)
 - **Diagnostic sensors** for every unmapped datastream, to help map other units
@@ -58,7 +61,7 @@ usually needed.
 
 | Entity | Source | Notes |
 |--------|--------|-------|
-| `fan.windmill…` | V0 power, V3 mode | 4-speed slider + Eco / Sleep presets |
+| `fan.windmill…` | V0 power, V3 mode, V1 AQI | 4-speed slider + auto / Eco / Sleep presets |
 | `sensor.…air_quality_index` | V1 | numeric AQI 0–500 |
 | `sensor.…air_quality` | V16 | category: Good / Moderate / … |
 | `switch.…child_lock` | V11 | |
@@ -80,17 +83,64 @@ Two Blynk quirks are handled automatically:
   category pin is always fetched individually to show "Good"/"Moderate" rather
   than a raw code.
 
+## The "auto" preset
+
+The Windmill has **no hardware auto mode** — its mode pin (V3) only holds the numbered
+speeds and the Eco / Sleep values. This integration emulates one in software:
+
+- Selecting the **auto** preset marks the fan as "auto-engaged" (tracked inside the
+  integration, not on any pin) and powers the fan on.
+- On every poll, while engaged, the integration reads the AQI pin (V1) and writes the
+  matching numbered speed to V3 — worse air quality → higher speed. The speed slider keeps
+  showing the current auto-selected speed.
+- **Hysteresis** (a configurable AQI dead-band) around each threshold stops the speed from
+  flapping when the AQI wobbles across a boundary.
+- Setting a **manual speed**, or picking **Eco** / **Sleep**, or turning the fan **off**,
+  exits auto.
+
+The preset is named exactly `auto` so that, when the fan is exposed to Apple Home as an
+`air_purifier` accessory, Home's **Auto/Manual** toggle drives it.
+
+### Auto thresholds (defaults)
+
+Tune these in the **Configure** dialog. Thresholds are AQI values on the 0–500 scale; the
+defaults target the standard 4-speed unit:
+
+| AQI (V1) | Auto speed |
+|----------|-----------|
+| below 50 | 1 |
+| 50–99 | 2 |
+| 100–149 | 3 |
+| 150+ | 4 |
+
+Hysteresis defaults to **10** AQI points: from a given speed, the AQI must cross the next
+boundary by more than the hysteresis before the speed steps. The auto preset can be turned
+off entirely with the **Enable the "auto" preset** option (it also hides when no AQI pin is
+mapped). Auto state is in-memory, so it resets to manual after a Home Assistant restart or
+an options change — just toggle Auto again.
+
+## Air quality readout (PM2.5) — status
+
+Apple Home's air-quality tile wants a real **PM2.5 density in µg/m³**. V1 is a 0–500 AQI
+*index*, which is a different unit, so it can't drive that tile. No datastream on the tested
+unit is currently confirmed to report raw µg/m³ PM2.5. The integration keeps a ready PM2.5
+sensor scaffold: if you find such a pin (scan unmapped pins with
+`scripts/discover_pins.py --scan`/`--watch` and look for small numbers that track air
+quality), map it to **PM2.5 sensor pin** in the options to expose
+`sensor.…pm2_5` — which can then be linked in the HomeKit bridge. Until then, the auto
+preset drives off the AQI index, which is sufficient for it.
+
 ## Configuration & remapping
 
 Open the integration's **Configure** dialog to remap any pin (blank disables that
-entity) or change the polling interval. The dialog shows a live snapshot of all
-current pin values. Confirmed default mapping:
+entity), tune the auto preset, or change the polling interval. The dialog shows a live
+snapshot of all current pin values. Confirmed default mapping:
 
 | Pin | Function |
 |-----|----------|
 | V0 | Power |
-| V1 | AQI (numeric) |
-| V3 | Mode: 1–4 speeds, 5 = Eco, 6 = Sleep |
+| V1 | AQI (numeric) — also drives the auto preset |
+| V3 | Mode: 1–4 speeds, 5 = Eco, 6 = Sleep (auto writes a numbered speed here) |
 | V4 | Sleep sub-mode: 1 = Whisper, 2 = White noise |
 | V5 | Display auto-dim |
 | V6 | Beep |
@@ -117,8 +167,24 @@ pytest
 ```
 
 The suite runs the integration end-to-end against a mocked cloud (config flow,
-entities, fan/preset/switch writes, the getAll-omission fallback, the category
-label override, offline handling).
+entities, fan/preset/switch writes, the AQI-driven auto preset and its hysteresis,
+the getAll-omission fallback, the category label override, offline handling), plus
+pure unit tests for the AQI → speed mapping.
+
+### Testing this build against your real device, in parallel
+
+To try an in-development version on your actual purifier without disturbing your stable
+install, generate a second copy under a different domain:
+
+```bash
+python3 scripts/make_dev_copy.py
+```
+
+This writes `custom_components/windmill_air_dev/` (gitignored). Restart Home Assistant and
+add **Windmill Air Purifier (dev)** with the *same* Auth Token — it installs as a separate
+integration alongside the stable one, pointed at the same device. Observe/compare freely;
+just avoid actively driving controls from both at once (both write the mode pin). Delete the
+folder and restart when done.
 
 ## Credits
 

@@ -32,6 +32,18 @@ CONF_LED_FADE_PIN = "led_fade_pin"
 CONF_BEEP_PIN = "beep_pin"
 CONF_UPDATE_INTERVAL = "update_interval"
 
+# --- "Auto" preset options -----------------------------------------------
+# The device has no native auto mode; the integration emulates one by writing
+# a numbered speed to the mode pin based on the AQI reading. These tune that
+# mapping (see fan.auto_target_speed) and are exposed via the options flow.
+CONF_AUTO_PRESET_ENABLED = "auto_preset_enabled"
+# AQI value at/above which auto selects speed 2, 3, 4 respectively (ascending).
+CONF_AUTO_THRESHOLD_1 = "auto_threshold_1"
+CONF_AUTO_THRESHOLD_2 = "auto_threshold_2"
+CONF_AUTO_THRESHOLD_3 = "auto_threshold_3"
+# Dead-band (in AQI units) applied around each boundary to stop speed flapping.
+CONF_AUTO_HYSTERESIS = "auto_hysteresis"
+
 # --- Defaults (discovered on the Windmill Air Purifier) ------------------
 DEFAULT_POWER_PIN = "v0"
 DEFAULT_MODE_PIN = "v3"
@@ -44,6 +56,15 @@ DEFAULT_LED_FADE_PIN = "v5"
 DEFAULT_BEEP_PIN = "v6"
 DEFAULT_UPDATE_INTERVAL = 30
 
+# --- "Auto" preset defaults ----------------------------------------------
+# Boundaries on the 0-500 AQI scale; roughly the Good / Moderate / Unhealthy
+# transitions. speed 1 below T1, speed 2 at T1, speed 3 at T2, speed 4 at T3.
+DEFAULT_AUTO_PRESET_ENABLED = True
+DEFAULT_AUTO_THRESHOLD_1 = 50
+DEFAULT_AUTO_THRESHOLD_2 = 100
+DEFAULT_AUTO_THRESHOLD_3 = 150
+DEFAULT_AUTO_HYSTERESIS = 10
+
 # --- Mode-pin enum values (device firmware behavior) ---------------------
 MODE_ECO = 5
 MODE_SLEEP = 6
@@ -51,6 +72,9 @@ MODE_SLEEP = 6
 SLEEP_WHISPER = 1
 SLEEP_WHITE_NOISE = 2
 
+# Must be exactly "auto" (case-insensitive): Home Assistant only wires a fan
+# preset to Apple Home's Auto/Manual toggle when it is named "auto".
+PRESET_AUTO = "auto"
 PRESET_ECO = "Eco"
 PRESET_SLEEP_WHISPER = "Sleep: Whisper"
 PRESET_SLEEP_WHITE_NOISE = "Sleep: White noise"
