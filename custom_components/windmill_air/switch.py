@@ -14,26 +14,23 @@ from .const import (
     CONF_BEEP_PIN,
     CONF_CHILD_LOCK_PIN,
     CONF_LED_FADE_PIN,
-    DEFAULT_BEEP_PIN,
-    DEFAULT_CHILD_LOCK_PIN,
-    DEFAULT_LED_FADE_PIN,
     DOMAIN,
 )
 from .coordinator import WindmillCoordinator
 from .entity import WindmillEntity
 from .util import as_bool
 
-# (config key, default pin, unique-id suffix, display name, icon)
+# (config key, model default-pin attribute, unique-id suffix, display name, icon)
 SWITCHES = (
-    (CONF_CHILD_LOCK_PIN, DEFAULT_CHILD_LOCK_PIN, "child_lock", "Child lock", "mdi:lock"),
+    (CONF_CHILD_LOCK_PIN, "child_lock_pin", "child_lock", "Child lock", "mdi:lock"),
     (
         CONF_LED_FADE_PIN,
-        DEFAULT_LED_FADE_PIN,
+        "led_fade_pin",
         "led_fade",
         "Display auto-dim",
         "mdi:brightness-auto",
     ),
-    (CONF_BEEP_PIN, DEFAULT_BEEP_PIN, "beep", "Beep", "mdi:volume-high"),
+    (CONF_BEEP_PIN, "beep_pin", "beep", "Beep", "mdi:volume-high"),
 )
 
 
@@ -43,9 +40,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: WindmillCoordinator = hass.data[DOMAIN][entry.entry_id]
+    model = coordinator.model
     entities = []
-    for conf_key, default_pin, suffix, name, icon in SWITCHES:
-        pin = entry.options.get(conf_key, default_pin)
+    for conf_key, model_attr, suffix, name, icon in SWITCHES:
+        pin = entry.options.get(conf_key, getattr(model, model_attr))
         if pin:
             entities.append(WindmillSwitch(coordinator, pin, suffix, name, icon))
     async_add_entities(entities)

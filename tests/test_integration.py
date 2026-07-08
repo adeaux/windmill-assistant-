@@ -52,7 +52,43 @@ async def test_config_flow_creates_entry(hass: HomeAssistant, aioclient_mock) ->
         result["flow_id"], {"token": TOKEN}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {"token": TOKEN}
+    # Model defaults to the larger unit (WAP1M1, the originally-confirmed one).
+    assert result["data"] == {"token": TOKEN, "model": "wap1m1"}
+    assert result["title"] == "Windmill Air Purifier Max"
+
+
+async def test_config_flow_selects_smaller_model(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    mock_cloud(aioclient_mock)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": "user"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {"token": TOKEN, "model": "sap1v1"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"] == {"token": TOKEN, "model": "sap1v1"}
+    # Retail name (matches the box); the model id disambiguates it from the
+    # app's "Air Purifier" (which is the larger unit).
+    assert result["title"] == "Windmill Air Purifier"
+
+
+async def test_device_registry_shows_model(
+    hass: HomeAssistant, aioclient_mock
+) -> None:
+    from homeassistant.helpers import device_registry as dr
+
+    entry = await _setup_entry(
+        hass, aioclient_mock, data={"token": TOKEN, "model": "sap1v1"}
+    )
+    device = dr.async_get(hass).async_get_device(
+        identifiers={(DOMAIN, entry.entry_id)}
+    )
+    assert device is not None
+    assert device.manufacturer == "Windmill"
+    assert device.model == "Air Purifier"
+    assert device.model_id == "SAP1V1"
 
 
 async def test_config_flow_bad_token(hass: HomeAssistant, aioclient_mock) -> None:
@@ -69,10 +105,13 @@ async def test_config_flow_bad_token(hass: HomeAssistant, aioclient_mock) -> Non
     assert result["errors"] == {"base": "invalid_auth"}
 
 
-async def _setup_entry(hass, aioclient_mock, options=None) -> MockConfigEntry:
+async def _setup_entry(hass, aioclient_mock, options=None, data=None) -> MockConfigEntry:
     mock_cloud(aioclient_mock)
     entry = MockConfigEntry(
-        domain=DOMAIN, data={"token": TOKEN}, options=options or {}, title="Windmill"
+        domain=DOMAIN,
+        data=data or {"token": TOKEN},
+        options=options or {},
+        title="Windmill",
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)

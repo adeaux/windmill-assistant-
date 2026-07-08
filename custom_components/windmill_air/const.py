@@ -2,10 +2,18 @@
 
 from logging import Logger, getLogger
 
+from .models import DEFAULT_MODEL, MODELS
+
 LOGGER: Logger = getLogger(__package__)
 
 DOMAIN = "windmill_air"
+# Product-family name (the integration covers every Windmill purifier model);
+# the specific model name/number is set per device from models.py.
 NAME = "Windmill Air Purifier"
+
+# Config-entry key holding the selected model (see models.py). Absent on entries
+# created before models existed, which then fall back to DEFAULT_MODEL.
+CONF_MODEL = "model"
 
 # Windmill runs its cloud on a white-labeled Blynk server.
 BASE_URL = "https://dashboard.windmillair.com"
@@ -44,16 +52,20 @@ CONF_AUTO_THRESHOLD_3 = "auto_threshold_3"
 # Dead-band (in AQI units) applied around each boundary to stop speed flapping.
 CONF_AUTO_HYSTERESIS = "auto_hysteresis"
 
-# --- Defaults (discovered on the Windmill Air Purifier) ------------------
-DEFAULT_POWER_PIN = "v0"
-DEFAULT_MODE_PIN = "v3"
-DEFAULT_SPEED_COUNT = 4
-DEFAULT_SLEEP_SUBMODE_PIN = "v4"
-DEFAULT_AQI_PIN = "v1"  # numeric 0-500 AQI (V16 holds the Good/Moderate label)
-DEFAULT_AQI_CATEGORY_PIN = "v16"  # text label: Good / Moderate / …
-DEFAULT_CHILD_LOCK_PIN = "v11"
-DEFAULT_LED_FADE_PIN = "v5"
-DEFAULT_BEEP_PIN = "v6"
+# --- Defaults --------------------------------------------------------------
+# The per-model pin layout / speed count lives in models.py; these module-level
+# constants mirror the default model so existing references keep a single source
+# of truth. Each is still overridable per config entry via the options flow.
+_DEFAULT_MODEL = MODELS[DEFAULT_MODEL]
+DEFAULT_POWER_PIN = _DEFAULT_MODEL.power_pin
+DEFAULT_MODE_PIN = _DEFAULT_MODEL.mode_pin
+DEFAULT_SPEED_COUNT = _DEFAULT_MODEL.speed_count
+DEFAULT_SLEEP_SUBMODE_PIN = _DEFAULT_MODEL.sleep_submode_pin
+DEFAULT_AQI_PIN = _DEFAULT_MODEL.aqi_pin  # numeric 0-500 (category pin holds the label)
+DEFAULT_AQI_CATEGORY_PIN = _DEFAULT_MODEL.aqi_category_pin  # text: Good / Moderate / …
+DEFAULT_CHILD_LOCK_PIN = _DEFAULT_MODEL.child_lock_pin
+DEFAULT_LED_FADE_PIN = _DEFAULT_MODEL.led_fade_pin
+DEFAULT_BEEP_PIN = _DEFAULT_MODEL.beep_pin
 DEFAULT_UPDATE_INTERVAL = 30
 
 # --- "Auto" preset defaults ----------------------------------------------
