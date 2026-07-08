@@ -39,16 +39,11 @@ from .const import (
     CONF_POWER_PIN,
     CONF_SLEEP_SUBMODE_PIN,
     CONF_SPEED_COUNT,
-    DEFAULT_AQI_CATEGORY_PIN,
     DEFAULT_AUTO_HYSTERESIS,
     DEFAULT_AUTO_PRESET_ENABLED,
     DEFAULT_AUTO_THRESHOLD_1,
     DEFAULT_AUTO_THRESHOLD_2,
     DEFAULT_AUTO_THRESHOLD_3,
-    DEFAULT_MODE_PIN,
-    DEFAULT_POWER_PIN,
-    DEFAULT_SLEEP_SUBMODE_PIN,
-    DEFAULT_SPEED_COUNT,
     DOMAIN,
     MODE_ECO,
     MODE_SLEEP,
@@ -147,24 +142,25 @@ class WindmillFan(WindmillEntity, FanEntity):
     def __init__(self, coordinator: WindmillCoordinator) -> None:
         super().__init__(coordinator, "fan")
         options = coordinator.config_entry.options
-        self._power_pin: str = options.get(CONF_POWER_PIN, DEFAULT_POWER_PIN)
-        self._mode_pin: str = options.get(CONF_MODE_PIN, DEFAULT_MODE_PIN)
+        model = coordinator.model
+        self._power_pin: str = options.get(CONF_POWER_PIN, model.power_pin)
+        self._mode_pin: str = options.get(CONF_MODE_PIN, model.mode_pin)
         self._submode_pin: str = options.get(
-            CONF_SLEEP_SUBMODE_PIN, DEFAULT_SLEEP_SUBMODE_PIN
+            CONF_SLEEP_SUBMODE_PIN, model.sleep_submode_pin
         )
         # Clamp to MODE_ECO - 1: a speed at the Eco (5) / Sleep (6) enum value
         # would make the top of the slider write Eco instead of a fan speed.
         self._speed_count: int = max(
             1,
             min(
-                int(options.get(CONF_SPEED_COUNT, DEFAULT_SPEED_COUNT)),
+                int(options.get(CONF_SPEED_COUNT, model.speed_count)),
                 MODE_ECO - 1,
             ),
         )
         # Auto follows the device's air-quality category (Good/Moderate/Bad/
         # Unhealthy) — the numeric AQI pin isn't reliable across units.
         self._aqi_category_pin: str = options.get(
-            CONF_AQI_CATEGORY_PIN, DEFAULT_AQI_CATEGORY_PIN
+            CONF_AQI_CATEGORY_PIN, model.aqi_category_pin
         )
 
         # --- Virtual "auto" preset state and tuning ---

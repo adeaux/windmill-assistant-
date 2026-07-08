@@ -3,9 +3,10 @@
     "step": {
       "user": {
         "title": "Connect your Windmill Air Purifier",
-        "description": "Enter the device Auth Token. Log in at dashboard.windmillair.com, open the Devices tab, select your purifier and copy its Auth Token.",
+        "description": "Choose your model and enter its device Auth Token. Log in at dashboard.windmillair.com, open the Devices tab, select your purifier and copy its Auth Token.\n\nHeads up — Windmill's names differ by surface, so match on the model number: WAP1M1 is the larger unit (\"Air Purifier Max\" at retail, but just \"Air Purifier\" in the app/dashboard); SAP1V1 is the smaller unit (\"Air Purifier\" at retail, but \"Air Purifier Mini\" in the app/dashboard). This only sets the default pin layout and the device label — every pin is remappable afterwards.",
         "data": {
-          "token": "Auth Token"
+          "token": "Auth Token",
+          "model": "Model"
         }
       },
       "reauth_confirm": {

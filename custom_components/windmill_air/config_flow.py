@@ -15,6 +15,12 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .api import WindmillAirApi, WindmillApiError, WindmillAuthError
 from .const import (
@@ -29,33 +35,38 @@ from .const import (
     CONF_CHILD_LOCK_PIN,
     CONF_LED_FADE_PIN,
     CONF_MODE_PIN,
+    CONF_MODEL,
     CONF_PM25_PIN,
     CONF_POWER_PIN,
     CONF_SLEEP_SUBMODE_PIN,
     CONF_SPEED_COUNT,
     CONF_TOKEN,
     CONF_UPDATE_INTERVAL,
-    DEFAULT_AQI_CATEGORY_PIN,
-    DEFAULT_AQI_PIN,
     DEFAULT_AUTO_HYSTERESIS,
     DEFAULT_AUTO_PRESET_ENABLED,
     DEFAULT_AUTO_THRESHOLD_1,
     DEFAULT_AUTO_THRESHOLD_2,
     DEFAULT_AUTO_THRESHOLD_3,
-    DEFAULT_BEEP_PIN,
-    DEFAULT_CHILD_LOCK_PIN,
-    DEFAULT_LED_FADE_PIN,
-    DEFAULT_MODE_PIN,
-    DEFAULT_POWER_PIN,
-    DEFAULT_SLEEP_SUBMODE_PIN,
-    DEFAULT_SPEED_COUNT,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     MODE_ECO,
-    NAME,
 )
+from .models import DEFAULT_MODEL, MODELS, get_model
 
-USER_SCHEMA = vol.Schema({vol.Required(CONF_TOKEN): str})
+USER_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_TOKEN): str,
+        vol.Required(CONF_MODEL, default=DEFAULT_MODEL): SelectSelector(
+            SelectSelectorConfig(
+                options=[
+                    SelectOptionDict(value=model.key, label=model.picker_label)
+                    for model in MODELS.values()
+                ],
+                mode=SelectSelectorMode.DROPDOWN,
+            )
+        ),
+    }
+)
 
 
 async def _validate_token(hass, token: str) -> dict[str, Any]:
@@ -86,8 +97,10 @@ class WindmillConfigFlow(ConfigFlow, domain=DOMAIN):
                 unique_id = hashlib.sha256(token.encode()).hexdigest()[:12]
                 await self.async_set_unique_id(unique_id)
                 self._abort_if_unique_id_configured()
+                model = get_model(user_input.get(CONF_MODEL))
                 return self.async_create_entry(
-                    title=NAME, data={CONF_TOKEN: token}
+                    title=f"Windmill {model.name}",
+                    data={CONF_TOKEN: token, CONF_MODEL: model.key},
                 )
         return self.async_show_form(
             step_id="user", data_schema=USER_SCHEMA, errors=errors
@@ -138,6 +151,7 @@ class WindmillOptionsFlow(OptionsFlow):
             return self.async_create_entry(title="", data=cleaned)
 
         options = self.config_entry.options
+        model = get_model(self.config_entry.data.get(CONF_MODEL))
 
         # Show a live snapshot of all datastreams to make mapping easier.
         snapshot = "unavailable"
@@ -156,11 +170,11 @@ class WindmillOptionsFlow(OptionsFlow):
             {
                 vol.Required(
                     CONF_POWER_PIN,
-                    default=options.get(CONF_POWER_PIN, DEFAULT_POWER_PIN),
+                    default=options.get(CONF_POWER_PIN, model.power_pin),
                 ): str,
                 vol.Required(
                     CONF_MODE_PIN,
-                    default=options.get(CONF_MODE_PIN, DEFAULT_MODE_PIN),
+                    default=options.get(CONF_MODE_PIN, model.mode_pin),
                 ): str,
                 # Cap at MODE_ECO - 1: values >= MODE_ECO (5) / MODE_SLEEP (6)
                 # would collide with the Eco/Sleep enum on the mode pin, so the
@@ -168,23 +182,23 @@ class WindmillOptionsFlow(OptionsFlow):
                 vol.Required(
                     CONF_SPEED_COUNT,
                     default=min(
-                        options.get(CONF_SPEED_COUNT, DEFAULT_SPEED_COUNT),
+                        options.get(CONF_SPEED_COUNT, model.speed_count),
                         MODE_ECO - 1,
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=1, max=MODE_ECO - 1)),
                 vol.Optional(
                     CONF_SLEEP_SUBMODE_PIN,
                     default=options.get(
-                        CONF_SLEEP_SUBMODE_PIN, DEFAULT_SLEEP_SUBMODE_PIN
+                        CONF_SLEEP_SUBMODE_PIN, model.sleep_submode_pin
                     ),
                 ): str,
                 vol.Optional(
-                    CONF_AQI_PIN, default=options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN)
+                    CONF_AQI_PIN, default=options.get(CONF_AQI_PIN, model.aqi_pin)
                 ): str,
                 vol.Optional(
                     CONF_AQI_CATEGORY_PIN,
                     default=options.get(
-                        CONF_AQI_CATEGORY_PIN, DEFAULT_AQI_CATEGORY_PIN
+                        CONF_AQI_CATEGORY_PIN, model.aqi_category_pin
                     ),
                 ): str,
                 vol.Optional(
@@ -192,15 +206,15 @@ class WindmillOptionsFlow(OptionsFlow):
                 ): str,
                 vol.Optional(
                     CONF_CHILD_LOCK_PIN,
-                    default=options.get(CONF_CHILD_LOCK_PIN, DEFAULT_CHILD_LOCK_PIN),
+                    default=options.get(CONF_CHILD_LOCK_PIN, model.child_lock_pin),
                 ): str,
                 vol.Optional(
                     CONF_LED_FADE_PIN,
-                    default=options.get(CONF_LED_FADE_PIN, DEFAULT_LED_FADE_PIN),
+                    default=options.get(CONF_LED_FADE_PIN, model.led_fade_pin),
                 ): str,
                 vol.Optional(
                     CONF_BEEP_PIN,
-                    default=options.get(CONF_BEEP_PIN, DEFAULT_BEEP_PIN),
+                    default=options.get(CONF_BEEP_PIN, model.beep_pin),
                 ): str,
                 # --- "Auto" preset (AQI-driven, emulated in software) ---
                 vol.Required(

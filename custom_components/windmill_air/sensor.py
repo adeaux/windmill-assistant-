@@ -28,33 +28,26 @@ from .const import (
     CONF_PM25_PIN,
     CONF_POWER_PIN,
     CONF_SLEEP_SUBMODE_PIN,
-    DEFAULT_AQI_CATEGORY_PIN,
-    DEFAULT_AQI_PIN,
-    DEFAULT_BEEP_PIN,
-    DEFAULT_CHILD_LOCK_PIN,
-    DEFAULT_LED_FADE_PIN,
-    DEFAULT_MODE_PIN,
-    DEFAULT_POWER_PIN,
-    DEFAULT_SLEEP_SUBMODE_PIN,
     DOMAIN,
 )
 from .coordinator import WindmillCoordinator
 from .entity import WindmillEntity
+from .models import WindmillModel
 from .util import as_float
 
 
-def _mapped_pins(entry: ConfigEntry) -> set[str]:
+def _mapped_pins(entry: ConfigEntry, model: WindmillModel) -> set[str]:
     options = entry.options
     pins = {
-        options.get(CONF_POWER_PIN, DEFAULT_POWER_PIN),
-        options.get(CONF_MODE_PIN, DEFAULT_MODE_PIN),
-        options.get(CONF_SLEEP_SUBMODE_PIN, DEFAULT_SLEEP_SUBMODE_PIN),
-        options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN),
-        options.get(CONF_AQI_CATEGORY_PIN, DEFAULT_AQI_CATEGORY_PIN),
+        options.get(CONF_POWER_PIN, model.power_pin),
+        options.get(CONF_MODE_PIN, model.mode_pin),
+        options.get(CONF_SLEEP_SUBMODE_PIN, model.sleep_submode_pin),
+        options.get(CONF_AQI_PIN, model.aqi_pin),
+        options.get(CONF_AQI_CATEGORY_PIN, model.aqi_category_pin),
         options.get(CONF_PM25_PIN, ""),
-        options.get(CONF_CHILD_LOCK_PIN, DEFAULT_CHILD_LOCK_PIN),
-        options.get(CONF_LED_FADE_PIN, DEFAULT_LED_FADE_PIN),
-        options.get(CONF_BEEP_PIN, DEFAULT_BEEP_PIN),
+        options.get(CONF_CHILD_LOCK_PIN, model.child_lock_pin),
+        options.get(CONF_LED_FADE_PIN, model.led_fade_pin),
+        options.get(CONF_BEEP_PIN, model.beep_pin),
     }
     return {p.lower() for p in pins if p}
 
@@ -65,9 +58,10 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: WindmillCoordinator = hass.data[DOMAIN][entry.entry_id]
+    model = coordinator.model
     entities: list[SensorEntity] = []
 
-    aqi_pin = entry.options.get(CONF_AQI_PIN, DEFAULT_AQI_PIN)
+    aqi_pin = entry.options.get(CONF_AQI_PIN, model.aqi_pin)
     if aqi_pin:
         entities.append(
             WindmillValueSensor(
@@ -78,7 +72,7 @@ async def async_setup_entry(
                 device_class=SensorDeviceClass.AQI,
             )
         )
-    category_pin = entry.options.get(CONF_AQI_CATEGORY_PIN, DEFAULT_AQI_CATEGORY_PIN)
+    category_pin = entry.options.get(CONF_AQI_CATEGORY_PIN, model.aqi_category_pin)
     if category_pin:
         entities.append(WindmillCategorySensor(coordinator, category_pin))
 
@@ -95,7 +89,7 @@ async def async_setup_entry(
             )
         )
 
-    mapped = _mapped_pins(entry)
+    mapped = _mapped_pins(entry, model)
     if coordinator.data is not None:
         entities.extend(
             WindmillPinSensor(coordinator, pin)

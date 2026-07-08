@@ -14,12 +14,14 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import WindmillAirApi, WindmillApiError, WindmillAuthError
 from .const import (
     CONF_AQI_CATEGORY_PIN,
+    CONF_MODEL,
     CONF_UPDATE_INTERVAL,
     DEFAULT_AQI_CATEGORY_PIN,
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     LOGGER,
 )
+from .models import WindmillModel, get_model
 
 
 @dataclass
@@ -47,6 +49,10 @@ class WindmillCoordinator(DataUpdateCoordinator[WindmillData]):
             update_interval=timedelta(seconds=interval),
         )
         self.api = api
+        # The selected model supplies default pins / speed count and the label
+        # shown for the device (see models.py). Entries predating models fall
+        # back to the default model.
+        self.model: WindmillModel = get_model(entry.data.get(CONF_MODEL))
 
     def _configured_pins(self) -> list[str]:
         """Pin names explicitly mapped in the options (keys ending in _pin)."""

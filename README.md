@@ -5,8 +5,9 @@
 
 A custom [Home Assistant](https://www.home-assistant.io/) integration that controls the
 [Windmill Air Purifier](https://windmillair.com/products/the-windmill-air-purifier)
-through Windmill's cloud — a white-labeled [Blynk](https://blynk.io) server at
-`dashboard.windmillair.com`.
+— both the **Air Purifier Max** (`WAP1M1`) and the smaller **Air Purifier**
+(`SAP1V1`) — through Windmill's cloud, a white-labeled [Blynk](https://blynk.io)
+server at `dashboard.windmillair.com`.
 
 There's a community integration for the Windmill **AC**, but nothing for the
 **purifier** — this fills that gap.
@@ -31,9 +32,34 @@ There's a community integration for the Windmill **AC**, but nothing for the
 
 ## Supported devices
 
-Developed and confirmed against the Windmill Air Purifier. Other Windmill
-purifier models likely work but may use a different pin layout — everything is
-remappable, and unmapped pins show as diagnostic sensors to help you adjust.
+Windmill sells two purifiers, and you pick yours when adding the integration.
+
+⚠️ **Windmill's names are inconsistent across surfaces**, so identify your unit
+by its **model number** (on the rating label / box), not its name:
+
+| Model number | Size | Retail name (box, windmillair.com) | App / dashboard name |
+|--------------|------|------------------------------------|----------------------|
+| `WAP1M1` | larger | Air Purifier **Max** | Air Purifier |
+| `SAP1V1` | smaller | Air Purifier | Air Purifier **Mini** |
+
+Note the trap: "Windmill Air Purifier" is the **larger** unit in the app but the
+**smaller** unit at retail. The setup picker shows both names plus the model
+number so you can't pick wrong. `WAP1M1` is what this integration was developed
+and confirmed against; `SAP1V1` defaults to that same layout until verified on
+real hardware (see below).
+
+The chosen model sets the default pin layout / fan-speed count and the model
+name (and number) shown for the device in Home Assistant. Every pin is still
+remappable afterwards, and unmapped pins show up as diagnostic sensors to help
+you adjust — so an unconfirmed unit or a firmware variant can always be tuned by
+hand. Model definitions live in
+[`custom_components/windmill_air/models.py`](custom_components/windmill_air/models.py);
+add a new entry there to support another unit.
+
+> **Note on the smaller Air Purifier (`SAP1V1`):** its pin layout is currently
+> assumed identical to the Max and has not yet been confirmed on hardware. If any
+> control misbehaves, map it out with `scripts/discover_pins.py` (below) and
+> either fix it in the options flow or update `MODEL_SAP1V1` in `models.py`.
 
 ## Installation
 
@@ -54,10 +80,11 @@ folder and restart.
    [dashboard.windmillair.com](https://dashboard.windmillair.com) with your
    Windmill app account → **Devices** tab → select your purifier → copy the Auth Token.
 2. **Settings → Devices & Services → Add Integration → Windmill Air Purifier**,
-   paste the token.
+   pick your **model** (Air Purifier Max / Air Purifier), and paste the token.
 
-Defaults already match a standard Windmill Air Purifier, so no manual mapping is
-usually needed.
+The model you choose seeds the correct defaults, so no manual mapping is usually
+needed. Adding both units? Repeat the steps with each device's own token — every
+config entry keeps its own model and pin mapping.
 
 ## Entities
 

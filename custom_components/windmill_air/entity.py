@@ -17,12 +17,14 @@ class WindmillEntity(CoordinatorEntity[WindmillCoordinator]):
     def __init__(self, coordinator: WindmillCoordinator, suffix: str) -> None:
         super().__init__(coordinator)
         entry_id = coordinator.config_entry.entry_id
+        model = coordinator.model
         self._attr_unique_id = f"{entry_id}_{suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry_id)},
             name=coordinator.config_entry.title or NAME,
             manufacturer="Windmill",
-            model="Air Purifier",
+            model=model.name,
+            model_id=model.model_number or None,
         )
 
     @property
