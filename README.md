@@ -22,9 +22,8 @@ There's a community integration for the Windmill **AC**, but nothing for the
   active it sets the fan speed from the air-quality category (Good/Moderate/Bad/Unhealthy).
   Named exactly `auto` so Home Assistant wires it to Apple Home's **Auto/Manual** toggle.
 - **Air quality** — a Good/Moderate/Bad/Unhealthy **category** sensor (the device's own
-  PM2.5-based signal, and the source the auto preset follows). A numeric AQI sensor is also
-  exposed, but its value is unconfirmed — on the tested unit that pin reads a constant, so
-  treat the category as the reliable signal.
+  PM2.5-based signal, and the source the auto preset follows), plus a numeric **AQI** sensor
+  (V1) that reads a live 0–500 index matching the number shown in the Windmill app.
 - **Switches** — child lock, display auto-dim, beep (audible feedback)
 - **Diagnostic sensors** for every unmapped datastream, to help map other units
 - UI config flow (just paste your device Auth Token) with reauth support
@@ -65,7 +64,7 @@ usually needed.
 | Entity | Source | Notes |
 |--------|--------|-------|
 | `fan.windmill…` | V0 power, V3 mode, V16 category | 4-speed slider + auto / Eco / Sleep presets |
-| `sensor.…air_quality_index` | V1 | numeric AQI — unconfirmed; reads a constant on the tested unit |
+| `sensor.…air_quality_index` | V1 | numeric AQI 0–500 (matches the Windmill app) |
 | `sensor.…air_quality` | V16 | category: Good / Moderate / … (drives the auto preset) |
 | `switch.…child_lock` | V11 | |
 | `switch.…display_auto_dim` | V5 | LED auto-fade after interaction |
@@ -130,16 +129,16 @@ just re-select Auto.
 
 ## Air quality readout (PM2.5) — status
 
-Apple Home's air-quality tile wants a real **PM2.5 density in µg/m³**. The device exposes a
-numeric AQI *index* pin (V1), which is a different unit and can't drive that tile — and on the
-tested unit that pin reads a constant value rather than a live index, so it isn't a reliable
-readout either. No datastream on the tested unit is currently confirmed to report raw µg/m³
-PM2.5. The integration keeps a ready PM2.5 sensor scaffold: if you find such a pin (scan
-unmapped pins with `scripts/discover_pins.py --scan`/`--watch` and look for small numbers that
-track air quality), map it to **PM2.5 sensor pin** in the options to expose
-`sensor.…pm2_5` — which can then be linked in the HomeKit bridge. The auto preset doesn't
-depend on any of this: it follows the device's Good/Moderate/Bad/Unhealthy **category** (V16),
-which is reliable.
+Apple Home's air-quality tile wants a real **PM2.5 density in µg/m³**. V1 is a live **AQI
+*index*** (0–500, confirmed to match the number in the Windmill app), but an index is a
+different unit than µg/m³, so it can't drive that tile. A smoke test on the tested unit found
+**no datastream that reports raw µg/m³ PM2.5** — only the AQI index (V1) and the
+Good/Moderate/Bad/Unhealthy category (V16) respond to air quality. The integration keeps a
+ready PM2.5 sensor scaffold anyway: if a unit ever exposes such a pin (scan for it with
+`scripts/discover_pins.py --scan`/`--watch` and look for small numbers that track air quality),
+map it to **PM2.5 sensor pin** in the options to expose `sensor.…pm2_5` — which can then be
+linked in the HomeKit bridge. The auto preset is unaffected either way: it follows the V16
+category.
 
 ## Configuration & remapping
 
@@ -150,7 +149,7 @@ snapshot of all current pin values. Confirmed default mapping:
 | Pin | Function |
 |-----|----------|
 | V0 | Power |
-| V1 | AQI (numeric — unconfirmed; constant on the tested unit) |
+| V1 | AQI (numeric 0–500, matches the app) |
 | V3 | Mode: 1–4 speeds, 5 = Eco, 6 = Sleep (auto writes a numbered speed here) |
 | V4 | Sleep sub-mode: 1 = Whisper, 2 = White noise |
 | V5 | Display auto-dim |
