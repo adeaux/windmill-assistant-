@@ -1,6 +1,6 @@
 # Windmill Air Purifier for Home Assistant
 
-[![Validate](https://github.com/adeaux/windmill-assistant-/actions/workflows/validate.yml/badge.svg)](https://github.com/adeaux/windmill-assistant-/actions/workflows/validate.yml)
+[![Validate](https://github.com/adeaux/WindmillPurifier/actions/workflows/validate.yml/badge.svg)](https://github.com/adeaux/WindmillPurifier/actions/workflows/validate.yml)
 [![hacs](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz)
 
 A custom [Home Assistant](https://www.home-assistant.io/) integration that controls the
@@ -21,7 +21,10 @@ There's a community integration for the Windmill **AC**, but nothing for the
 - **Auto preset** — a mode the integration emulates (the device has no hardware auto): while
   active it sets the fan speed from the air-quality category (Good/Moderate/Bad/Unhealthy).
   Named exactly `auto` so Home Assistant wires it to Apple Home's **Auto/Manual** toggle.
-- **Air quality** — numeric AQI (0–500) sensor and a Good/Moderate/… category sensor
+- **Air quality** — a Good/Moderate/Bad/Unhealthy **category** sensor (the device's own
+  PM2.5-based signal, and the source the auto preset follows). A numeric AQI sensor is also
+  exposed, but its value is unconfirmed — on the tested unit that pin reads a constant, so
+  treat the category as the reliable signal.
 - **Switches** — child lock, display auto-dim, beep (audible feedback)
 - **Diagnostic sensors** for every unmapped datastream, to help map other units
 - UI config flow (just paste your device Auth Token) with reauth support
@@ -38,7 +41,7 @@ remappable, and unmapped pins show as diagnostic sensors to help you adjust.
 ### HACS (custom repository)
 
 1. HACS → three-dot menu → **Custom repositories** → add
-   `https://github.com/adeaux/windmill-assistant-` with category **Integration**.
+   `https://github.com/adeaux/WindmillPurifier` with category **Integration**.
 2. Install **Windmill Air Purifier**, then **restart Home Assistant**.
 
 ### Manual
@@ -62,7 +65,7 @@ usually needed.
 | Entity | Source | Notes |
 |--------|--------|-------|
 | `fan.windmill…` | V0 power, V3 mode, V16 category | 4-speed slider + auto / Eco / Sleep presets |
-| `sensor.…air_quality_index` | V1 | numeric AQI 0–500 |
+| `sensor.…air_quality_index` | V1 | numeric AQI — unconfirmed; reads a constant on the tested unit |
 | `sensor.…air_quality` | V16 | category: Good / Moderate / … (drives the auto preset) |
 | `switch.…child_lock` | V11 | |
 | `switch.…display_auto_dim` | V5 | LED auto-fade after interaction |
@@ -127,14 +130,16 @@ just re-select Auto.
 
 ## Air quality readout (PM2.5) — status
 
-Apple Home's air-quality tile wants a real **PM2.5 density in µg/m³**. V1 is a 0–500 AQI
-*index*, which is a different unit, so it can't drive that tile. No datastream on the tested
-unit is currently confirmed to report raw µg/m³ PM2.5. The integration keeps a ready PM2.5
-sensor scaffold: if you find such a pin (scan unmapped pins with
-`scripts/discover_pins.py --scan`/`--watch` and look for small numbers that track air
-quality), map it to **PM2.5 sensor pin** in the options to expose
-`sensor.…pm2_5` — which can then be linked in the HomeKit bridge. Until then, the auto
-preset drives off the AQI index, which is sufficient for it.
+Apple Home's air-quality tile wants a real **PM2.5 density in µg/m³**. The device exposes a
+numeric AQI *index* pin (V1), which is a different unit and can't drive that tile — and on the
+tested unit that pin reads a constant value rather than a live index, so it isn't a reliable
+readout either. No datastream on the tested unit is currently confirmed to report raw µg/m³
+PM2.5. The integration keeps a ready PM2.5 sensor scaffold: if you find such a pin (scan
+unmapped pins with `scripts/discover_pins.py --scan`/`--watch` and look for small numbers that
+track air quality), map it to **PM2.5 sensor pin** in the options to expose
+`sensor.…pm2_5` — which can then be linked in the HomeKit bridge. The auto preset doesn't
+depend on any of this: it follows the device's Good/Moderate/Bad/Unhealthy **category** (V16),
+which is reliable.
 
 ## Configuration & remapping
 
@@ -145,7 +150,7 @@ snapshot of all current pin values. Confirmed default mapping:
 | Pin | Function |
 |-----|----------|
 | V0 | Power |
-| V1 | AQI (numeric) |
+| V1 | AQI (numeric — unconfirmed; constant on the tested unit) |
 | V3 | Mode: 1–4 speeds, 5 = Eco, 6 = Sleep (auto writes a numbered speed here) |
 | V4 | Sleep sub-mode: 1 = Whisper, 2 = White noise |
 | V5 | Display auto-dim |
